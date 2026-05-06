@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm config *)",
+      "Bash(set PYTHON=D:\\\\devtools\\\\python.exe)",
+      "Bash(\"D:\\\\devtools\\\\python.exe\" -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(npm_config_python=\"D:\\\\devtools\\\\python.exe\" npx --yes node-gyp --python \"D:\\\\devtools\\\\python.exe\" --version)",
+      "Bash(npm_config_python=\"D:\\\\devtools\\\\python.exe\" npm install)",
+      "Bash(where cl.exe)",
+      "Bash(where msbuild.exe)",
+      "Bash(vswhere -property installationPath)"
+    ]
+  }
+}

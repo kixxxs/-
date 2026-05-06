@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(timeout 10 npx electron .)",
+      "Bash(rm -f \"db/db/artist_data.db\")",
+      "Bash(rm -f \"db/db/test.db\")"
+    ]
+  }
+}

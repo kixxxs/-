@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.electron-cache/
+.nsis/
+*.bak
+db/db/*.db
+安装包测试文件/
