@@ -221,6 +221,10 @@ app.get('/api/ping', function(req, res) {
     res.json({ ok: true });
 });
 
+app.get('/api/health', function(req, res) {
+    res.json({ status: 'ok', uptime: process.uptime(), dbPath: process.env.DB_PATH || '(default)' });
+});
+
 // ===== SSE endpoint =====
 app.get('/api/events', function(req, res) {
     // Auth via query param (EventSource doesn't support custom headers)
@@ -262,6 +266,8 @@ db.init();
 app.listen(PORT, function() {
     console.log('');
     console.log('  艺人管理系统服务器已启动！');
+    console.log('  端口: ' + PORT);
+    console.log('  数据库: ' + (process.env.DB_PATH || '(默认)'));
     console.log('  本地访问: http://localhost:' + PORT);
     console.log('  按 Ctrl+C 停止服务器');
     console.log('');

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist2/
+android/
+www/
+src/
+db/
+main.js
+preload.js
+*.ps1
+*.bat
+.electron-cache/
+.nsis/
+.gradle/
+capacitor.config.ts

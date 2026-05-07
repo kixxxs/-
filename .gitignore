@@ -4,6 +4,9 @@ dist/
 .nsis/
 *.bak
 db/db/*.db
+*.db-shm
+*.db-wal
+*.db
 安装包测试文件/
 www/
 android/

@@ -216,6 +216,16 @@
             color: var(--text-muted);
             position: relative;
         }
+        .connection-badge {
+            display: inline-block;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: var(--surface-bg);
+            border: 1px solid var(--border-color);
+            cursor: default;
+            margin-top: 2px;
+        }
         [data-theme="noir"] .header h1 { color: var(--primary-color); }
 
         /* ---- Navigation (desktop) ---- */
@@ -964,6 +974,7 @@
         <div class="header">
             <h1><i class="fas fa-music"></i> 艺人管理系统</h1>
             <div class="version">v3.0 · Noir Stage</div>
+            <span id="connectionBadge" class="connection-badge" title="连接状态">🟡 本地模式</span>
             <!-- V2 设置齿轮按钮 -->
             <div class="settings-gear-wrapper">
                 <button id="settingsGearBtn" onclick="toggleSettingsDropdown()" title="设置" class="settings-btn">
@@ -990,17 +1001,20 @@
                         </button>
                     </div>
                     <div class="settings-dropdown-section">
-                        <div class="settings-dropdown-label">服务器设置（网页共享）</div>
+                        <div class="settings-dropdown-label">云同步设置</div>
                         <div style="padding:4px 16px 8px;">
-                            <input type="text" id="serverUrlInput" placeholder="http://localhost:3000"
+                            <input type="text" id="serverUrlInput" placeholder="https://artist-manager.up.railway.app"
                                 style="width:100%;padding:6px 10px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--surface-bg);color:var(--text-color);"
                                 value="">
                             <div style="display:flex;gap:6px;margin-top:6px;">
                                 <button onclick="connectToServer()" class="settings-dropdown-item" style="flex:1;text-align:center;padding:5px 10px;font-size:12px;">
-                                    <i class="fas fa-plug me-1"></i>连接服务器
+                                    <i class="fas fa-plug me-1"></i>连接
                                 </button>
                                 <button onclick="disconnectServer()" class="settings-dropdown-item" style="flex:1;text-align:center;padding:5px 10px;font-size:12px;color:var(--danger-color);">
                                     <i class="fas fa-unlink me-1"></i>断开
+                                </button>
+                                <button onclick="document.getElementById('serverUrlInput').value=CLOUD_SERVER_URL; connectToServer();" class="settings-dropdown-item" style="flex:1;text-align:center;padding:5px 10px;font-size:12px;color:var(--primary-color);">
+                                    <i class="fas fa-cloud me-1"></i>云端
                                 </button>
                             </div>
                             <div id="serverStatus" style="font-size:11px;margin-top:4px;color:var(--text-muted);"></div>
@@ -1834,6 +1848,9 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
+        // ===== 云端同步配置 =====
+        var CLOUD_SERVER_URL = 'https://artist-manager.up.railway.app';
+
         // ===== V2 登录系统 =====
         var LOGIN_ACCOUNTS = [
             { account: 'admin',    password: 'admin123',   label: '管理员' },
@@ -1869,8 +1886,8 @@
             if (!account) { errorEl.textContent = '请选择一个账户'; return; }
             if (!password) { errorEl.textContent = '请输入密码'; return; }
 
-            // Try server login if server URL is configured
-            var serverUrl = localStorage.getItem('v2_server_url') || '';
+            // Try cloud server login (default cloud URL or custom server URL)
+            var serverUrl = localStorage.getItem('v2_server_url') || CLOUD_SERVER_URL || '';
             if (serverUrl) {
                 try {
                     var resp = await fetch(serverUrl.replace(/\/+$/, '') + '/api/login', {
@@ -1885,6 +1902,9 @@
                         sessionStorage.setItem('v2_login_label', result.user.label);
                         sessionStorage.setItem('v2_login_token', result.token);
                         sessionStorage.setItem('v2_login_mode', 'server');
+                        if (!localStorage.getItem('v2_server_url')) {
+                            localStorage.setItem('v2_server_url', serverUrl);
+                        }
                         DBStorage.setServerMode(serverUrl, result.token);
                         onLoginSuccess();
                         return;
@@ -1893,9 +1913,12 @@
                         return;
                     }
                 } catch(e) {
-                    errorEl.textContent = '无法连接到服务器，请检查服务器地址或使用本地模式';
-                    console.warn('[Login] Server unreachable:', e.message);
-                    return;
+                    // If cloud server unreachable and no custom URL, fall through to local
+                    if (localStorage.getItem('v2_server_url')) {
+                        errorEl.textContent = '无法连接到服务器，请检查网络后重试';
+                        return;
+                    }
+                    console.warn('[Login] Cloud server unreachable, falling back to local mode:', e.message);
                 }
             }
 
@@ -1921,6 +1944,7 @@
         function onLoginSuccess() {
             document.getElementById('loginOverlay').style.display = 'none';
             document.getElementById('appMain').style.display = 'block';
+            updateConnectionBadge();
             updateSettingsUserDisplay();
 
             // Connect SSE if in server mode
@@ -2059,7 +2083,52 @@
             } else {
                 el.innerHTML = '<span style="color:var(--text-muted);">○ 未配置（本地模式）</span>';
             }
+            updateConnectionBadge();
         }
+
+        function updateConnectionBadge() {
+            var badge = document.getElementById('connectionBadge');
+            if (!badge) return;
+            if (!navigator.onLine) {
+                badge.innerHTML = '🔴 离线';
+                badge.title = '网络已断开，数据保存在本地';
+            } else if (DBStorage._serverMode) {
+                var url = localStorage.getItem('v2_server_url') || CLOUD_SERVER_URL || '';
+                badge.innerHTML = '🟢 云端在线';
+                badge.title = '已连接: ' + url;
+            } else {
+                badge.innerHTML = '🟡 本地模式';
+                badge.title = '使用本地数据库，数据未同步到云端';
+            }
+        }
+
+        function autoReconnectCloud() {
+            var token = sessionStorage.getItem('v2_login_token');
+            var serverUrl = localStorage.getItem('v2_server_url') || '';
+            if (token && serverUrl) {
+                DBStorage.setServerMode(serverUrl, token);
+                updateConnectionBadge();
+                updateServerStatusDisplay();
+                if (sessionStorage.getItem('v2_logged_in') === 'true') {
+                    loadData();
+                }
+            }
+        }
+
+        // ===== Network status listeners =====
+        window.addEventListener('online', function() {
+            console.log('[Network] Back online');
+            updateConnectionBadge();
+            if (sessionStorage.getItem('v2_logged_in') === 'true') {
+                autoReconnectCloud();
+            }
+        });
+
+        window.addEventListener('offline', function() {
+            console.log('[Network] Offline');
+            updateConnectionBadge();
+            showToast('网络已断开，数据将保存在本地', 'warning');
+        });
 
         async function connectToServer() {
             var input = document.getElementById('serverUrlInput');
@@ -2086,6 +2155,7 @@
                         DBStorage.setServerMode(url, result.token);
                         connectSSE(url, result.token);
                         updateServerStatusDisplay();
+                        updateConnectionBadge();
                         showToast('已连接到服务器', 'success');
                         // Reload data from server
                         await loadData();
@@ -2098,6 +2168,7 @@
                 }
             } else {
                 updateServerStatusDisplay();
+                updateConnectionBadge();
                 showToast('服务器地址已保存，请登录后连接', 'info');
             }
         }
@@ -2108,6 +2179,7 @@
             sessionStorage.removeItem('v2_login_token');
             sessionStorage.setItem('v2_login_mode', 'local');
             updateServerStatusDisplay();
+            updateConnectionBadge();
             showToast('已断开服务器连接，切换到本地模式', 'info');
             // Reload from local
             loadData().then(function() { try { initializeCharts(); } catch(e) {} });

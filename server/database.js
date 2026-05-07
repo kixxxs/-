@@ -50,11 +50,14 @@ function syncStores() {
 }
 
 function seedData() {
-  var ins = db.prepare('INSERT INTO stores (name) VALUES (?)');
   var storeIds = {};
+  var stores = db.prepare('SELECT id, name FROM stores').all();
+  stores.forEach(function(s) { storeIds[s.name] = s.id; });
   DESIRED_STORES.forEach(function(s) {
-    var r = ins.run(s);
-    storeIds[s] = r.lastInsertRowid;
+    if (!storeIds[s]) {
+      var r = db.prepare('INSERT INTO stores (name) VALUES (?)').run(s);
+      storeIds[s] = r.lastInsertRowid;
+    }
   });
 
   var today = new Date();
