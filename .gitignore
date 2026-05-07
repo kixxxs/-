@@ -5,3 +5,9 @@ dist/
 *.bak
 db/db/*.db
 安装包测试文件/
+www/
+android/
+*.apk
+*.aab
+.gradle/
+dist2/

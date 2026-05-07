@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#121214">
     <title>艺人管理系统</title>
     <link rel="stylesheet" href="../node_modules/@fortawesome/fontawesome-free/css/all.min.css">
     <link rel="stylesheet" href="../node_modules/bootstrap/dist/css/bootstrap.min.css">
@@ -14,6 +15,14 @@
            NOIR STAGE — 暗夜舞台主题系统
            艺人管理系统 v3.0 UI
            ================================================================ */
+
+        /* ---- Capacitor Safe Area ---- */
+        :root {
+            --safe-area-top: env(safe-area-inset-top, 0px);
+            --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-area-left: env(safe-area-inset-left, 0px);
+            --safe-area-right: env(safe-area-inset-right, 0px);
+        }
 
         /* ---- CSS Variables ---- */
         :root,
@@ -884,6 +893,20 @@
             #loginSubmitBtn { min-height: 44px; }
 
             .footer { margin-top: 16px; padding: 12px; font-size: 11px; }
+
+            /* Capacitor 移动端增强 */
+            * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+            input, textarea, select { -webkit-user-select: text; user-select: text; }
+            body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
+            .modal-body { max-height: 60vh; overflow-y: auto; }
+            .table td .btn { min-width: 36px; min-height: 36px; margin: 2px; }
+            .app-container { padding-top: calc(8px + var(--safe-area-top)); }
+            .mobile-bottom-nav { padding-bottom: calc(4px + var(--safe-area-bottom)); }
+            @media (hover: none) {
+                .v2-nav-btn:hover { background: transparent; color: var(--nav-text); }
+                .v2-nav-btn:active { background: var(--nav-hover-bg); color: var(--primary-color); }
+                .stat-card:hover { transform: none; box-shadow: none; }
+            }
         }
     </style>
 </head>
@@ -2139,6 +2162,12 @@
         };
 
         var _useMemoryStore = false;
+        var _useCapacitorStore = false;
+        // Capacitor 环境检测（由 capacitor.js 注入 window.Capacitor）
+        if (typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
+            _useCapacitorStore = true;
+            console.log('[启动] Capacitor 原生环境已检测到');
+        }
 
         const ServerStorage = {
             _base: '',
@@ -2226,11 +2255,13 @@
             _getBackend: function() {
                 if (this._serverMode) return 'server';
                 if (window.electronAPI) return 'electron';
+                if (_useCapacitorStore) return 'capacitor';
                 return 'memory';
             },
 
             _initMemoryIfNeeded: function() {
                 if (this._serverMode) return;
+                if (_useCapacitorStore) return;
                 if (!window.electronAPI) {
                     _useMemoryStore = true;
                 }
@@ -2238,6 +2269,12 @@
             async loadAll() {
                 if (this._serverMode) return ServerStorage.loadAll();
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try {
+                        if (!CapDB.getAllData) { console.error('[CapDB] CapDB not initialized'); return null; }
+                        return CapDB.getAllData();
+                    } catch(e) { console.error('[CapDB] loadAll error:', e); return null; }
+                }
                 if (_useMemoryStore) {
                     return {
                         artists: _memoryStore.artists.slice(),
@@ -2259,6 +2296,10 @@
             async addArtist(artistData) {
                 if (this._serverMode) return ServerStorage.addArtist(artistData);
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.addArtist(artistData); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) {
                     var newArtist = {
                         id: _memoryStore._nextId++,
@@ -2285,6 +2326,10 @@
             async updateArtist(artistData) {
                 if (this._serverMode) return ServerStorage.updateArtist(artistData);
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.updateArtist(artistData); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) {
                     for (var i = 0; i < _memoryStore.artists.length; i++) {
                         if (_memoryStore.artists[i].id === artistData.id) {
@@ -2312,6 +2357,10 @@
             async deleteArtist(id) {
                 if (this._serverMode) return ServerStorage.deleteArtist(id);
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.deleteArtist(id); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) {
                     var idx = -1;
                     for (var i = 0; i < _memoryStore.artists.length; i++) {
@@ -2334,6 +2383,10 @@
             async addContract(contractData) {
                 if (this._serverMode) return ServerStorage.addContract(contractData);
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.addContract(contractData); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) {
                     var newContract = {
                         id: _memoryStore._nextContractId++,
@@ -2363,6 +2416,10 @@
             async updateContract(contractData) {
                 if (this._serverMode) return ServerStorage.updateContract(contractData);
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.updateContract(contractData); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) {
                     for (var i = 0; i < _memoryStore.contracts.length; i++) {
                         if (_memoryStore.contracts[i].id === contractData.id) {
@@ -2392,6 +2449,10 @@
             async addSalaries(salaryList) {
                 if (this._serverMode) return ServerStorage.addSalaries(salaryList);
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.addSalaries(salaryList); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) {
                     var savedCount = 0;
                     salaryList.forEach(function(sd) {
@@ -2425,6 +2486,10 @@
             async addEvaluations(evalList) {
                 if (this._serverMode) return ServerStorage.addEvaluations(evalList);
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.addEvaluations(evalList); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) {
                     var savedCount = 0;
                     evalList.forEach(function(ed) {
@@ -2458,6 +2523,10 @@
             async dbQuery(sql, params) {
                 if (this._serverMode) return ServerStorage.dbQuery(sql, params);
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return { ok: true, data: CapDB.query(sql, params) }; }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) return { ok: false, error: '浏览器环境不支持直接 SQL 查询' };
                 if (window.electronAPI && window.electronAPI.dbQuery) {
                     try {
@@ -2469,6 +2538,10 @@
             async resetAllData() {
                 if (this._serverMode) return ServerStorage.resetAllData();
                 this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.resetAllData(); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
                 if (_useMemoryStore) {
                     _memoryStore.artists = [];
                     _memoryStore.contracts = [];
@@ -2479,6 +2552,21 @@
                 if (window.electronAPI && window.electronAPI.resetAllData) {
                     try {
                         return await window.electronAPI.resetAllData();
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+            async saveArtistPhotos(artistId, photosJson) {
+                if (this._serverMode) return ServerStorage.saveArtistPhotos(artistId, photosJson);
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.saveArtistPhotos(artistId, photosJson); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) return { ok: true };
+                if (window.electronAPI && window.electronAPI.saveArtistPhotos) {
+                    try {
+                        return await window.electronAPI.saveArtistPhotos(artistId, photosJson);
                     } catch(e) { return { ok: false, error: e.message }; }
                 }
                 return { ok: false, error: 'IPC 不可用' };
@@ -2573,7 +2661,26 @@
                 }
             }
 
-            if (!window.electronAPI && !DBStorage._serverMode) {
+            if (_useCapacitorStore) {
+                // Capacitor 原生环境：初始化 sql.js 数据库
+                console.log('[启动] Capacitor 原生环境，初始化本地数据库...');
+                var capInitOk = await CapDB.init();
+                if (capInitOk) {
+                    console.log('[启动] Capacitor 本地数据库已就绪');
+                    var headerEl3 = document.querySelector('.header');
+                    if (headerEl3) {
+                        var badge3 = document.createElement('span');
+                        badge3.style.cssText = 'display:inline-block;background:var(--success-color);color:#fff;padding:2px 10px;border-radius:4px;font-size:12px;margin-left:12px;vertical-align:middle';
+                        badge3.textContent = '本地数据库模式';
+                        headerEl3.appendChild(badge3);
+                    }
+                } else {
+                    console.error('[启动] Capacitor 数据库初始化失败，回退到内存模式');
+                    _useCapacitorStore = false;
+                    _useMemoryStore = true;
+                }
+            }
+            if (!window.electronAPI && !DBStorage._serverMode && !_useCapacitorStore) {
                 console.warn('[启动] 检测到非 Electron 环境，使用浏览器内存存储（刷新后数据不保留）');
                 var headerEl = document.querySelector('.header');
                 if (headerEl) {
