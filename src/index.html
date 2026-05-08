@@ -798,88 +798,136 @@
            MOBILE RESPONSIVE
            ================================================================ */
         @media (max-width: 767px) {
-            html { font-size: 87.5%; }
-            .app-container { padding: 8px 8px 80px 8px; max-width: 100%; }
+            html { font-size: 16px; }
+            .app-container {
+                padding: 8px 12px calc(64px + env(safe-area-inset-bottom, 0px) + 12px) 12px;
+                max-width: 100%;
+            }
 
-            .header { padding: 16px; border-radius: 10px; margin-bottom: 10px; margin-top: 44px; }
-            .header h1 { font-size: 20px; }
-            .header .version { font-size: 11px; }
+            .header {
+                padding: 14px 16px;
+                border-radius: 16px;
+                margin-bottom: 12px;
+                margin-top: calc(8px + var(--safe-area-top));
+                background: var(--surface-raised);
+                border: 1px solid rgba(255,255,255,0.06);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+            }
+            .header h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+            .header .version { font-size: 10px; opacity: 0.6; }
 
             .v2-nav-container { display: none !important; }
+            .settings-gear-wrapper { display: none !important; }
+
             .mobile-bottom-nav {
                 display: flex;
                 position: fixed;
                 bottom: 0; left: 0; width: 100%;
-                background: var(--surface-bg);
-                border-top: 1px solid var(--border-color);
-                box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+                height: 64px;
+                background: rgba(28,28,33,0.85);
+                backdrop-filter: blur(20px) saturate(180%);
+                -webkit-backdrop-filter: blur(20px) saturate(180%);
+                border-top: 1px solid rgba(255,255,255,0.06);
+                box-shadow: 0 -1px 20px rgba(0,0,0,0.15);
                 z-index: 1040;
                 justify-content: space-around;
                 align-items: center;
-                padding: 4px 0 env(safe-area-inset-bottom, 8px);
+                padding: 0 4px env(safe-area-inset-bottom, 0px);
             }
             .mobile-nav-btn {
                 display: flex; flex-direction: column;
                 align-items: center; justify-content: center;
-                gap: 2px;
-                padding: 6px 4px;
-                min-width: 48px; min-height: 48px;
+                gap: 3px;
+                padding: 6px 2px;
+                min-width: 0; flex: 1;
                 border: none; background: transparent;
                 color: var(--nav-text);
                 font-size: 10px;
                 cursor: pointer;
-                transition: color 0.2s;
+                transition: color 0.25s ease, transform 0.2s ease;
                 -webkit-tap-highlight-color: transparent;
+                position: relative;
             }
             .mobile-nav-btn.active { color: var(--primary-color); }
-            .mobile-nav-icon { font-size: 20px; display: flex; align-items: center; justify-content: center; }
-            .mobile-nav-label { line-height: 1; }
+            .mobile-nav-btn.active .mobile-nav-icon { transform: scale(1.1); }
+            .mobile-nav-btn.active::after {
+                content: '';
+                position: absolute;
+                bottom: 2px;
+                width: 4px; height: 4px;
+                border-radius: 50%;
+                background: var(--primary-color);
+                box-shadow: 0 0 6px var(--primary-color);
+            }
+            .mobile-nav-icon {
+                font-size: 20px;
+                display: flex; align-items: center; justify-content: center;
+                transition: transform 0.25s ease;
+            }
+            .mobile-nav-label { line-height: 1; font-weight: 500; }
 
-            .content-area { padding: 14px; border-radius: 10px; min-height: auto; }
-            .section-title { font-size: 16px; margin-bottom: 14px; padding-bottom: 8px; }
+            .content-area { padding: 16px; border-radius: 16px; min-height: auto; background: var(--surface-bg); }
+            .section-title { font-size: 17px; font-weight: 700; margin-bottom: 14px; padding-bottom: 10px; letter-spacing: 0.01em; }
 
-            .col-md-3, .col-md-4 { flex: 0 0 50%; max-width: 50%; }
+            .col-md-3, .col-md-4 { flex: 0 0 50%; max-width: 50%; padding: 0 6px; }
             .col-md-6, .col-md-12 { flex: 0 0 100%; max-width: 100%; }
-            .stat-card { padding: 14px; border-radius: 10px; margin-bottom: 10px; }
-            .stat-card:hover { transform: none; }
-            .stat-card .card-title { font-size: 11px; }
-            .stat-card .card-value { font-size: 24px; }
+            .stat-card {
+                padding: 14px 12px;
+                border-radius: 16px;
+                margin-bottom: 10px;
+                background: var(--surface-raised);
+                border: 1px solid var(--border-light);
+                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+                transition: none;
+            }
+            .stat-card:hover { transform: none; box-shadow: none; }
+            .stat-card .card-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+            .stat-card .card-value { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
             .stat-card .card-sub { font-size: 11px; }
 
             .table-scroll {
                 max-height: 350px;
                 overflow: auto;
                 -webkit-overflow-scrolling: touch;
+                border-radius: 10px;
             }
             .table-scroll table { min-width: 600px; }
-            .table-container { padding: 10px; }
-            .table th, .table td { font-size: 12px; padding: 6px 8px; white-space: nowrap; }
-            .badge { padding: 3px 8px; font-size: 10px; }
+            .table-container { padding: 12px; border-radius: 16px; background: var(--surface-raised); border: 1px solid var(--border-light); }
+            .table th, .table td { font-size: 12px; padding: 8px 10px; white-space: nowrap; }
+            .badge { padding: 4px 10px; font-size: 10px; border-radius: 8px; }
 
-            .chart-container { padding: 14px; margin-bottom: 12px; }
-            .chart-title { font-size: 13px; margin-bottom: 10px; }
+            .chart-container {
+                padding: 16px; margin-bottom: 12px;
+                border-radius: 16px;
+                background: var(--surface-raised);
+                border: 1px solid var(--border-light);
+                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            }
+            .chart-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
             .radar-chart-container { height: 240px; }
 
-            .action-buttons { flex-direction: column; align-items: stretch; gap: 8px; }
-            .action-buttons .btn { width: 100%; min-height: 44px; }
+            .action-buttons { flex-direction: column; align-items: stretch; gap: 10px; }
+            .action-buttons .btn { width: 100%; min-height: 46px; border-radius: 12px; font-weight: 600; }
             .artist-search-wrapper { flex: 1 1 auto; width: 100%; margin-left: 0; }
-            .artist-search-input, .salary-month-select { width: 100%; min-height: 44px; }
+            .artist-search-input, .salary-month-select { width: 100%; min-height: 46px; border-radius: 12px; font-size: 15px; }
 
             .modal-content {
-                width: 95%; max-width: 95vw;
-                margin: 2vh auto; padding: 18px;
-                border-radius: 14px;
+                width: 94%; max-width: 94vw;
+                margin: 3vh auto; padding: 20px;
+                border-radius: 18px;
                 max-height: 92vh; overflow-y: auto;
             }
-            .modal-header h2 { font-size: 17px; }
+            .modal-header h2 { font-size: 18px; font-weight: 700; }
             .close-btn { font-size: 28px; min-width: 44px; min-height: 44px; }
 
             .form-group input, .form-group select, .form-group textarea {
-                font-size: 16px; padding: 12px 14px; min-height: 44px;
+                font-size: 16px; padding: 12px 14px; min-height: 46px;
+                border-radius: 12px;
             }
-            .btn { min-height: 44px; padding: 12px 20px; }
+            .btn { min-height: 46px; padding: 12px 20px; border-radius: 12px; }
 
-            #artistDetailModal .modal-content { max-width: 95vw !important; }
+            #artistDetailModal .modal-content { max-width: 95vw !important; border-radius: 18px; }
             #artistDetailModal [style*="flex:0 0 200px"] { flex: 0 0 100% !important; text-align: center !important; }
             #detailAvatar { width: 120px !important; height: 120px !important; }
 
@@ -891,16 +939,12 @@
             #photoLightbox button { padding: 8px 14px; font-size: 28px; }
             #photoLightbox span { font-size: 32px; top: 12px; right: 16px; }
 
-            .settings-gear-wrapper { top: 12px; right: 12px; }
-            .settings-btn { width: 40px; height: 40px; font-size: 18px; }
-            .settings-dropdown { position: fixed; top: 56px; right: 8px; left: 8px; min-width: auto; }
-
             .toast-container { top: 8px; right: 8px; left: 8px; }
-            .toast { min-width: auto; padding: 12px 16px; font-size: 13px; }
+            .toast { min-width: auto; padding: 12px 16px; font-size: 13px; border-radius: 12px; }
 
-            #loginCard { width: 90vw; max-width: 90vw; padding: 24px; }
-            #loginCard select, #loginCard input { font-size: 16px; min-height: 44px; }
-            #loginSubmitBtn { min-height: 44px; }
+            #loginCard { width: 90vw; max-width: 90vw; padding: 28px; border-radius: 20px; }
+            #loginCard select, #loginCard input { font-size: 16px; min-height: 46px; border-radius: 12px; }
+            #loginSubmitBtn { min-height: 46px; border-radius: 12px; }
 
             .footer { margin-top: 16px; padding: 12px; font-size: 11px; }
 
@@ -909,7 +953,7 @@
             input, textarea, select { -webkit-user-select: text; user-select: text; }
             body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
             .modal-body { max-height: 60vh; overflow-y: auto; }
-            .table td .btn { min-width: 36px; min-height: 36px; margin: 2px; }
+            .table td .btn { min-width: 36px; min-height: 36px; margin: 2px; border-radius: 8px; }
             .app-container { padding-top: calc(8px + var(--safe-area-top)); }
             .mobile-bottom-nav { padding-bottom: calc(4px + var(--safe-area-bottom)); }
             @media (hover: none) {
@@ -1056,6 +1100,10 @@
                 <span class="v2-nav-icon"><i class="fas fa-star"></i></span>
                 <span class="v2-nav-label">艺人评价</span>
             </button>
+            <button class="v2-nav-btn" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile" type="button" role="tab" aria-controls="profile" aria-selected="false">
+                <span class="v2-nav-icon"><i class="fas fa-user"></i></span>
+                <span class="v2-nav-label">我的</span>
+            </button>
         </div>
 
         <!-- ===== Mobile bottom tab bar (visible only at <768px) ===== -->
@@ -1079,6 +1127,10 @@
             <button class="mobile-nav-btn" data-tab-target="#evaluation">
                 <span class="mobile-nav-icon"><i class="fas fa-star"></i></span>
                 <span class="mobile-nav-label">评价</span>
+            </button>
+            <button class="mobile-nav-btn" data-tab-target="#profile">
+                <span class="mobile-nav-icon"><i class="fas fa-user"></i></span>
+                <span class="mobile-nav-label">我的</span>
             </button>
         </div>
 
@@ -1486,6 +1538,79 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 我的 (Profile/Settings) -->
+            <div class="tab-pane fade" id="profile" role="tabpanel" aria-labelledby="profile-tab">
+                <div class="content-area">
+                    <h2 class="section-title"><i class="fas fa-user me-2"></i>我的</h2>
+
+                    <!-- 用户信息卡片 -->
+                    <div style="display:flex;align-items:center;gap:14px;padding:16px;margin-bottom:16px;background:var(--surface-raised);border-radius:16px;border:1px solid var(--border-light);">
+                        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg, var(--primary-color), var(--secondary-color));display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <i class="fas fa-user" style="font-size:22px;color:var(--body-bg);"></i>
+                        </div>
+                        <div>
+                            <div style="font-size:16px;font-weight:700;" id="profileUserName">用户</div>
+                            <div style="font-size:12px;color:var(--text-muted);" id="profileUserAccount">--</div>
+                        </div>
+                        <span id="profileConnectionBadge" class="connection-badge" style="margin-left:auto;" title="连接状态">🟡 本地模式</span>
+                    </div>
+
+                    <!-- 主题选择 -->
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:12px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">界面主题</div>
+                        <div style="display:flex;gap:10px;">
+                            <button onclick="setTheme('noir')" class="btn" style="flex:1;padding:10px;border-radius:12px;background:var(--surface-raised);border:2px solid var(--border-color);color:var(--text-color);font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;">
+                                <span class="theme-dot noir-dot"></span>暗夜舞台
+                                <i class="fas fa-check theme-check" id="profileCheckNoir"></i>
+                            </button>
+                            <button onclick="setTheme('morandi')" class="btn" style="flex:1;padding:10px;border-radius:12px;background:var(--surface-raised);border:2px solid var(--border-color);color:var(--text-color);font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;">
+                                <span class="theme-dot morandi-dot"></span>莫兰迪
+                                <i class="fas fa-check theme-check" id="profileCheckMorandi" style="display:none;"></i>
+                            </button>
+                            <button onclick="setTheme('orange')" class="btn" style="flex:1;padding:10px;border-radius:12px;background:var(--surface-raised);border:2px solid var(--border-color);color:var(--text-color);font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;">
+                                <span class="theme-dot orange-dot"></span>活力橙
+                                <i class="fas fa-check theme-check" id="profileCheckOrange" style="display:none;"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 云同步设置 -->
+                    <div style="margin-bottom:16px;padding:16px;background:var(--surface-raised);border-radius:16px;border:1px solid var(--border-light);">
+                        <div style="font-size:12px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;">
+                            <i class="fas fa-cloud me-1"></i>云同步设置
+                        </div>
+                        <input type="text" id="profileServerUrlInput" placeholder="https://artist-manager.up.railway.app"
+                            style="width:100%;padding:10px 14px;border:1px solid var(--border-color);border-radius:10px;font-size:14px;background:var(--surface-bg);color:var(--text-color);margin-bottom:10px;" value="">
+                        <div style="display:flex;gap:8px;">
+                            <button onclick="connectToServer()" class="btn" style="flex:1;text-align:center;padding:10px;font-size:13px;border-radius:10px;background:var(--surface-bg);border:1px solid var(--border-color);color:var(--text-color);">
+                                <i class="fas fa-plug me-1"></i>连接
+                            </button>
+                            <button onclick="disconnectServer()" class="btn" style="flex:1;text-align:center;padding:10px;font-size:13px;border-radius:10px;background:var(--surface-bg);border:1px solid var(--border-color);color:var(--danger-color);">
+                                <i class="fas fa-unlink me-1"></i>断开
+                            </button>
+                            <button onclick="document.getElementById('profileServerUrlInput').value=CLOUD_SERVER_URL;connectToServer();" class="btn" style="flex:1;text-align:center;padding:10px;font-size:13px;border-radius:10px;background:var(--surface-bg);border:1px solid var(--border-color);color:var(--primary-color);">
+                                <i class="fas fa-cloud me-1"></i>云端
+                            </button>
+                        </div>
+                        <div id="profileServerStatus" style="font-size:12px;margin-top:8px;color:var(--text-muted);"></div>
+                    </div>
+
+                    <!-- 重置数据库 -->
+                    <div style="margin-bottom:12px;">
+                        <button onclick="resetAllData()" style="width:100%;padding:12px;border-radius:12px;background:var(--surface-raised);border:1px solid var(--danger-color);color:var(--danger-color);font-size:14px;cursor:pointer;">
+                            <i class="fas fa-trash-alt me-2"></i>重置数据库
+                        </button>
+                    </div>
+
+                    <!-- 退出登录 -->
+                    <div>
+                        <button onclick="doLogout()" style="width:100%;padding:14px;border-radius:12px;background:linear-gradient(135deg, var(--primary-color), var(--secondary-color));border:none;color:var(--body-bg);font-size:15px;font-weight:700;cursor:pointer;letter-spacing:0.04em;">
+                            <i class="fas fa-sign-out-alt me-2"></i>退出登录 / 切换账户
+                        </button>
                     </div>
                 </div>
             </div>
@@ -2042,6 +2167,9 @@
             document.getElementById('checkNoir').style.display = (themeName === 'noir') ? 'inline' : 'none';
             document.getElementById('checkMorandi').style.display = (themeName === 'morandi') ? 'inline' : 'none';
             document.getElementById('checkOrange').style.display = (themeName === 'orange') ? 'inline' : 'none';
+            var pc = document.getElementById('profileCheckNoir'); if (pc) pc.style.display = (themeName === 'noir') ? 'inline' : 'none';
+            var pm = document.getElementById('profileCheckMorandi'); if (pm) pm.style.display = (themeName === 'morandi') ? 'inline' : 'none';
+            var po = document.getElementById('profileCheckOrange'); if (po) po.style.display = (themeName === 'orange') ? 'inline' : 'none';
 
             // 重绘图表以匹配新主题颜色
             if (sessionStorage.getItem('v2_logged_in') === 'true') {
@@ -2074,22 +2202,27 @@
             var label = sessionStorage.getItem('v2_login_label') || '用户';
             var el = document.getElementById('settingsUserName');
             if (el) el.textContent = label;
+            var profileEl = document.getElementById('profileUserName');
+            if (profileEl) profileEl.textContent = label;
+            var accountEl = document.getElementById('profileUserAccount');
+            if (accountEl) accountEl.textContent = sessionStorage.getItem('v2_login_user') || '--';
             // Update server status
             updateServerStatusDisplay();
         }
 
         function updateServerStatusDisplay() {
-            var el = document.getElementById('serverStatus');
-            if (!el) return;
+            var el = document.getElementById('profileServerStatus') || document.getElementById('serverStatus');
             var url = localStorage.getItem('v2_server_url') || '';
-            var input = document.getElementById('serverUrlInput');
+            var input = document.getElementById('profileServerUrlInput') || document.getElementById('serverUrlInput');
             if (input && url) input.value = url;
-            if (DBStorage._serverMode) {
-                el.innerHTML = '<span style="color:var(--success-color);">● 已连接到服务器</span>';
-            } else if (url) {
-                el.innerHTML = '<span style="color:var(--text-muted);">○ 未连接（请登录后连接）</span>';
-            } else {
-                el.innerHTML = '<span style="color:var(--text-muted);">○ 未配置（本地模式）</span>';
+            if (el) {
+                if (DBStorage._serverMode) {
+                    el.innerHTML = '<span style="color:var(--success-color);">● 已连接到服务器</span>';
+                } else if (url) {
+                    el.innerHTML = '<span style="color:var(--text-muted);">○ 未连接（请登录后连接）</span>';
+                } else {
+                    el.innerHTML = '<span style="color:var(--text-muted);">○ 未配置（本地模式）</span>';
+                }
             }
             updateConnectionBadge();
         }
@@ -2108,6 +2241,8 @@
                 badge.innerHTML = '🟡 本地模式';
                 badge.title = '使用本地数据库，数据未同步到云端';
             }
+            var pBadge = document.getElementById('profileConnectionBadge');
+            if (pBadge) { pBadge.innerHTML = badge.innerHTML; pBadge.title = badge.title; }
         }
 
         function autoReconnectCloud() {
@@ -2139,7 +2274,7 @@
         });
 
         async function connectToServer() {
-            var input = document.getElementById('serverUrlInput');
+            var input = document.getElementById('profileServerUrlInput') || document.getElementById('serverUrlInput');
             var url = (input.value || '').trim();
             if (!url) { showToast('请输入服务器地址', 'error'); return; }
             url = url.replace(/\/+$/, '');
