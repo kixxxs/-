@@ -1913,11 +1913,7 @@
                         return;
                     }
                 } catch(e) {
-                    // If cloud server unreachable and no custom URL, fall through to local
-                    if (localStorage.getItem('v2_server_url')) {
-                        errorEl.textContent = '无法连接到服务器，请检查网络后重试';
-                        return;
-                    }
+                    // Cloud server unreachable — always fall through to local login
                     console.warn('[Login] Cloud server unreachable, falling back to local mode:', e.message);
                 }
             }
@@ -2007,14 +2003,26 @@
             if (errEl) errEl.textContent = '';
         }
 
-        function checkLoginState() {
+        async function checkLoginState() {
             if (sessionStorage.getItem('v2_logged_in') === 'true') {
                 // Restore server mode if applicable
                 if (sessionStorage.getItem('v2_login_mode') === 'server') {
                     var serverUrl = localStorage.getItem('v2_server_url') || '';
                     var token = sessionStorage.getItem('v2_login_token') || '';
                     if (serverUrl && token) {
-                        DBStorage.setServerMode(serverUrl, token);
+                        try {
+                            var resp = await fetch(serverUrl.replace(/\/+$/, '') + '/api/ping', { signal: AbortSignal.timeout(3000) });
+                            var result = await resp.json();
+                            if (result.ok) {
+                                DBStorage.setServerMode(serverUrl, token);
+                            } else {
+                                console.warn('[checkLoginState] Server ping failed, falling back to local mode');
+                                sessionStorage.setItem('v2_login_mode', 'local');
+                            }
+                        } catch(e) {
+                            console.warn('[checkLoginState] Server unreachable, falling back to local mode:', e.message);
+                            sessionStorage.setItem('v2_login_mode', 'local');
+                        }
                     }
                 }
                 var overlay = document.getElementById('loginOverlay');
@@ -2714,7 +2722,7 @@
             }
 
             // V2: 检查登录状态
-            if (!checkLoginState()) {
+            if (!(await checkLoginState())) {
                 // 未登录，仅显示登录页
                 updateServerStatusDisplay();
                 setupEventListeners();
