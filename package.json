@@ -43,7 +43,7 @@
     "appId": "com.artist.manager",
     "productName": "艺人管理系统",
     "directories": {
-      "output": "dist"
+      "output": "dist3"
     },
     "win": {
       "target": "nsis",
