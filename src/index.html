@@ -2142,10 +2142,12 @@
                                 DBStorage.setServerMode(serverUrl, token);
                             } else {
                                 console.warn('[checkLoginState] Server ping failed, falling back to local mode');
+                                DBStorage._serverMode = false;
                                 sessionStorage.setItem('v2_login_mode', 'local');
                             }
                         } catch(e) {
                             console.warn('[checkLoginState] Server unreachable, falling back to local mode:', e.message);
+                            DBStorage._serverMode = false;
                             sessionStorage.setItem('v2_login_mode', 'local');
                         }
                     }
@@ -2245,16 +2247,29 @@
             if (pBadge) { pBadge.innerHTML = badge.innerHTML; pBadge.title = badge.title; }
         }
 
-        function autoReconnectCloud() {
+        async function autoReconnectCloud() {
             var token = sessionStorage.getItem('v2_login_token');
             var serverUrl = localStorage.getItem('v2_server_url') || '';
             if (token && serverUrl) {
-                DBStorage.setServerMode(serverUrl, token);
+                try {
+                    var resp = await fetch(serverUrl.replace(/\/+$/, '') + '/api/ping', { signal: AbortSignal.timeout(3000) });
+                    var result = await resp.json();
+                    if (result.ok) {
+                        DBStorage.setServerMode(serverUrl, token);
+                        updateConnectionBadge();
+                        updateServerStatusDisplay();
+                        if (sessionStorage.getItem('v2_logged_in') === 'true') {
+                            loadData();
+                        }
+                        return;
+                    }
+                } catch(e) {
+                    console.warn('[autoReconnectCloud] Server unreachable:', e.message);
+                }
+                // Server unreachable — ensure local mode
+                DBStorage._serverMode = false;
                 updateConnectionBadge();
                 updateServerStatusDisplay();
-                if (sessionStorage.getItem('v2_logged_in') === 'true') {
-                    loadData();
-                }
             }
         }
 
@@ -2482,7 +2497,10 @@
                 }
             },
             async loadAll() {
-                if (this._serverMode) return ServerStorage.loadAll();
+                if (this._serverMode) {
+                    try { return await ServerStorage.loadAll(); }
+                    catch(e) { console.warn('[DBStorage] Server loadAll failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try {
@@ -2509,7 +2527,10 @@
                 return null;
             },
             async addArtist(artistData) {
-                if (this._serverMode) return ServerStorage.addArtist(artistData);
+                if (this._serverMode) {
+                    try { return await ServerStorage.addArtist(artistData); }
+                    catch(e) { console.warn('[DBStorage] Server addArtist failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.addArtist(artistData); }
@@ -2539,7 +2560,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async updateArtist(artistData) {
-                if (this._serverMode) return ServerStorage.updateArtist(artistData);
+                if (this._serverMode) {
+                    try { return await ServerStorage.updateArtist(artistData); }
+                    catch(e) { console.warn('[DBStorage] Server updateArtist failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.updateArtist(artistData); }
@@ -2570,7 +2594,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async deleteArtist(id) {
-                if (this._serverMode) return ServerStorage.deleteArtist(id);
+                if (this._serverMode) {
+                    try { return await ServerStorage.deleteArtist(id); }
+                    catch(e) { console.warn('[DBStorage] Server deleteArtist failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.deleteArtist(id); }
@@ -2596,7 +2623,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async addContract(contractData) {
-                if (this._serverMode) return ServerStorage.addContract(contractData);
+                if (this._serverMode) {
+                    try { return await ServerStorage.addContract(contractData); }
+                    catch(e) { console.warn('[DBStorage] Server addContract failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.addContract(contractData); }
@@ -2629,7 +2659,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async updateContract(contractData) {
-                if (this._serverMode) return ServerStorage.updateContract(contractData);
+                if (this._serverMode) {
+                    try { return await ServerStorage.updateContract(contractData); }
+                    catch(e) { console.warn('[DBStorage] Server updateContract failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.updateContract(contractData); }
@@ -2662,7 +2695,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async addSalaries(salaryList) {
-                if (this._serverMode) return ServerStorage.addSalaries(salaryList);
+                if (this._serverMode) {
+                    try { return await ServerStorage.addSalaries(salaryList); }
+                    catch(e) { console.warn('[DBStorage] Server addSalaries failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.addSalaries(salaryList); }
@@ -2699,7 +2735,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async addEvaluations(evalList) {
-                if (this._serverMode) return ServerStorage.addEvaluations(evalList);
+                if (this._serverMode) {
+                    try { return await ServerStorage.addEvaluations(evalList); }
+                    catch(e) { console.warn('[DBStorage] Server addEvaluations failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.addEvaluations(evalList); }
@@ -2736,7 +2775,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async dbQuery(sql, params) {
-                if (this._serverMode) return ServerStorage.dbQuery(sql, params);
+                if (this._serverMode) {
+                    try { return await ServerStorage.dbQuery(sql, params); }
+                    catch(e) { console.warn('[DBStorage] Server dbQuery failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return { ok: true, data: CapDB.query(sql, params) }; }
@@ -2751,7 +2793,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async resetAllData() {
-                if (this._serverMode) return ServerStorage.resetAllData();
+                if (this._serverMode) {
+                    try { return await ServerStorage.resetAllData(); }
+                    catch(e) { console.warn('[DBStorage] Server resetAllData failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.resetAllData(); }
@@ -2772,7 +2817,10 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
             async saveArtistPhotos(artistId, photosJson) {
-                if (this._serverMode) return ServerStorage.saveArtistPhotos(artistId, photosJson);
+                if (this._serverMode) {
+                    try { return await ServerStorage.saveArtistPhotos(artistId, photosJson); }
+                    catch(e) { console.warn('[DBStorage] Server saveArtistPhotos failed, falling back:', e.message); this._serverMode = false; }
+                }
                 this._initMemoryIfNeeded();
                 if (_useCapacitorStore) {
                     try { return CapDB.saveArtistPhotos(artistId, photosJson); }
