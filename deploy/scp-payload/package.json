@@ -1,0 +1,10 @@
+{
+  "name": "artist-manager-server",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}
