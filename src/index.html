@@ -686,7 +686,7 @@
         }
 
         /* ---- Settings Gear ---- */
-        .settings-gear-wrapper { position: fixed; top: 24px; right: 32px; z-index: 1050; }
+        .settings-gear-wrapper { display: none !important; }
         .settings-btn {
             width: 42px; height: 42px;
             border-radius: 50%;
@@ -1793,8 +1793,26 @@
                         <option value="店聘约">店聘约</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>合约PDF文件（可选）</label>
+                    <input type="file" id="contractPdfFile" accept=".pdf" style="padding:8px;">
+                    <small style="color:var(--text-muted);display:block;margin-top:4px;">支持上传PDF格式的合约文件，上传后可点击合约列表中的姓名预览</small>
+                </div>
                 <button type="button" class="btn btn-primary" id="addContractSubmitBtn" onclick="addContract()">添加</button>
             </form>
+        </div>
+    </div>
+
+    <!-- PDF预览模态框 -->
+    <div class="modal" id="pdfPreviewModal">
+        <div class="modal-content" style="width:80%;max-width:900px;">
+            <div class="modal-header">
+                <h2>合约PDF预览 - <span id="pdfPreviewContractName"></span></h2>
+                <span class="close-btn" onclick="closeModal('pdfPreviewModal')">&times;</span>
+            </div>
+            <div class="modal-body" style="padding:0;">
+                <iframe id="pdfPreviewIframe" style="width:100%;height:75vh;border:none;"></iframe>
+            </div>
         </div>
     </div>
 
@@ -2645,7 +2663,8 @@
                         startDate: contractData.startDate || '',
                         endDate: contractData.endDate || '',
                         contractNumber: contractData.contractNo || '',
-                        status: contractData.signStatus || '未签约'
+                        status: contractData.signStatus || '未签约',
+                        contractFile: contractData.contractFile || ''
                     };
                     _memoryStore.contracts.push(newContract);
                     console.log('[内存存储] 合约已添加:', newContract.artistName, '(共' + _memoryStore.contracts.length + '条)');
@@ -2681,6 +2700,7 @@
                             _memoryStore.contracts[i].endDate = contractData.endDate || '';
                             _memoryStore.contracts[i].contractNumber = contractData.contractNo || '';
                             _memoryStore.contracts[i].status = contractData.signStatus || '未签约';
+                            _memoryStore.contracts[i].contractFile = contractData.contractFile || _memoryStore.contracts[i].contractFile || '';
                             console.log('[内存存储] 合约已更新:', contractData.name);
                             return { ok: true };
                         }
@@ -3124,7 +3144,10 @@
             } else {
                 filtered.forEach(function(contract) {
                     var row = document.createElement('tr');
-                    row.innerHTML = '<td>' + (contract.artistName || '未知') + '</td>'
+                    var nameHtml = contract.contractFile
+                        ? '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:underline;cursor:pointer;" title="点击预览合约PDF">' + (contract.artistName || '未知') + '</a>'
+                        : (contract.artistName || '未知');
+                    row.innerHTML = '<td>' + nameHtml + '</td>'
                         + '<td>' + contract.position + '</td>'
                         + '<td>' + (contract.brand || '') + '</td>'
                         + '<td>' + (contract.gender || '') + '</td>'
@@ -3165,8 +3188,11 @@
             const expired = appData.contracts.filter(c => new Date(c.endDate) <= new Date());
             expired.forEach(contract => {
                 const row = document.createElement('tr');
+                var nameHtml = contract.contractFile
+                    ? '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:underline;cursor:pointer;" title="点击预览合约PDF">' + (contract.artistName || '未知') + '</a>'
+                    : (contract.artistName || '未知');
                 row.innerHTML = `
-                    <td>${contract.artistName || '未知'}</td>
+                    <td>${nameHtml}</td>
                     <td>${contract.position}</td>
                     <td>${contract.endDate}</td>
                     <td><span class="badge badge-danger">已到期</span></td>
@@ -3186,8 +3212,11 @@
             expiring.forEach(contract => {
                 const daysLeft = Math.ceil((new Date(contract.endDate) - now) / (1000 * 60 * 60 * 24));
                 const row = document.createElement('tr');
+                var nameHtml = contract.contractFile
+                    ? '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:underline;cursor:pointer;" title="点击预览合约PDF">' + (contract.artistName || '未知') + '</a>'
+                    : (contract.artistName || '未知');
                 row.innerHTML = `
-                    <td>${contract.artistName || '未知'}</td>
+                    <td>${nameHtml}</td>
                     <td>${contract.position}</td>
                     <td>${contract.endDate}</td>
                     <td>${daysLeft}天</td>
@@ -3808,10 +3837,12 @@
                             position: 'top',
                             labels: {
                                 color: tOpts3.textColor,
-                                font: { size: window.innerWidth < 768 ? 10 : 12 }
+                                font: { size: window.innerWidth < 768 ? 12 : 14 }
                             }
                         },
                         tooltip: {
+                            bodyFont: { size: window.innerWidth < 768 ? 12 : 13 },
+                            titleFont: { size: window.innerWidth < 768 ? 13 : 14 },
                             callbacks: {
                                 label: function(ctx) {
                                     var storeIdx = ctx.dataIndex;
@@ -3824,14 +3855,27 @@
                         }
                     },
                     scales: {
-                        x: { stacked: true, ticks: { color: tOpts3.textColor }, grid: { color: tOpts3.gridColor } },
+                        x: {
+                            stacked: true,
+                            ticks: { color: tOpts3.textColor, font: { size: window.innerWidth < 768 ? 11 : 13 } },
+                            grid: { color: tOpts3.gridColor }
+                        },
                         y: {
                             stacked: true,
                             beginAtZero: true,
                             max: 300000,
-                            ticks: { color: tOpts3.textColor, callback: function(v) { return v >= 1000 ? (v/1000).toFixed(0) + 'k' : v; } },
+                            ticks: {
+                                color: tOpts3.textColor,
+                                font: { size: window.innerWidth < 768 ? 10 : 12 },
+                                callback: function(v) { return v >= 1000 ? (v/1000).toFixed(0) + 'k' : v; }
+                            },
                             grid: { color: tOpts3.gridColor },
-                            title: { display: true, text: '薪资总额 (¥)', color: tOpts3.textColor }
+                            title: {
+                                display: true,
+                                text: '薪资总额 (¥)',
+                                color: tOpts3.textColor,
+                                font: { size: window.innerWidth < 768 ? 12 : 14 }
+                            }
                         }
                     }
                 },
@@ -3855,13 +3899,19 @@
                                 ctx2.fillStyle = '#fff';
                                 ctx2.textAlign = 'center';
                                 ctx2.textBaseline = 'middle';
-                                if (h > 35) {
-                                    ctx2.font = 'bold 12px "Segoe UI", sans-serif';
-                                    ctx2.fillText(pct + '%', x, centerY - 7);
-                                    ctx2.font = '10px "Segoe UI", sans-serif';
-                                    ctx2.fillText(count + '人', x, centerY + 9);
+                                var isMobile = window.innerWidth < 768;
+                                if (h > 45) {
+                                    ctx2.font = (isMobile ? 'bold 14px' : 'bold 16px') + ' "Segoe UI", sans-serif';
+                                    ctx2.fillText(pct + '%', x, centerY - (isMobile ? 8 : 10));
+                                    ctx2.font = (isMobile ? '12px' : '13px') + ' "Segoe UI", sans-serif';
+                                    ctx2.fillText(count + '人', x, centerY + (isMobile ? 10 : 12));
+                                } else if (h > 30) {
+                                    ctx2.font = (isMobile ? 'bold 13px' : 'bold 14px') + ' "Segoe UI", sans-serif';
+                                    ctx2.fillText(pct + '%', x, centerY - (isMobile ? 7 : 8));
+                                    ctx2.font = (isMobile ? '11px' : '12px') + ' "Segoe UI", sans-serif';
+                                    ctx2.fillText(count + '人', x, centerY + (isMobile ? 9 : 10));
                                 } else if (h > 18) {
-                                    ctx2.font = 'bold 10px "Segoe UI", sans-serif';
+                                    ctx2.font = (isMobile ? 'bold 11px' : 'bold 12px') + ' "Segoe UI", sans-serif';
                                     ctx2.fillText(pct + '%', x, centerY);
                                 }
                                 ctx2.restore();
@@ -4054,6 +4104,9 @@
             // 清除所有 checkbox
             var checks = document.querySelectorAll('#contractPositionCheckboxGroup input[name="contractPosition"]');
             checks.forEach(function(cb) { cb.checked = false; });
+            // 清除PDF文件输入
+            var pdfInput = document.getElementById('contractPdfFile');
+            if (pdfInput) pdfInput.value = '';
             document.getElementById('addContractModal').style.display = 'block';
         }
 
@@ -4176,6 +4229,10 @@
 
         // 新增合约
         async function addContract() {
+            var submitBtn = document.getElementById('addContractSubmitBtn');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '保存中...'; }
+
+            try {
             var nameEl = document.getElementById('contractArtistName');
             var brandEl = document.getElementById('contractBrand');
             var genderEl = document.getElementById('contractGender');
@@ -4205,14 +4262,40 @@
             if (!signStatus) { showToast('请选择签约状态', 'error'); signStatusEl && signStatusEl.focus(); return; }
             if (new Date(endDate) < new Date(startDate)) { showToast('合约终止日期不能早于起始日期', 'error'); return; }
 
+            // 读取PDF文件
+            var editId = document.getElementById('editContractId').value;
+            var isEdit = editId && parseInt(editId) > 0;
+            var contractFile = '';
+            var pdfInput = document.getElementById('contractPdfFile');
+            if (pdfInput && pdfInput.files && pdfInput.files[0]) {
+                var pdfFile = pdfInput.files[0];
+                console.log('[合约PDF] 检测到文件:', pdfFile.name, '大小:', (pdfFile.size / 1024).toFixed(1) + 'KB');
+                if (pdfFile.size > 20 * 1024 * 1024) {
+                    showToast('PDF文件不能超过20MB', 'error');
+                    return;
+                }
+                try {
+                    contractFile = await readFileAsBase64(pdfFile);
+                    console.log('[合约PDF] 读取完成, base64长度:', contractFile.length);
+                } catch(e) {
+                    console.error('[合约PDF] 读取失败:', e);
+                    showToast('PDF文件读取失败', 'error');
+                    return;
+                }
+            } else if (isEdit && pdfInput && pdfInput.getAttribute('data-existing')) {
+                // 编辑模式且未选择新文件，保留已有PDF
+                contractFile = pdfInput.getAttribute('data-existing');
+                console.log('[合约PDF] 编辑模式，保留已有文件:', contractFile);
+            }
+
             var contractData = {
                 name: name, position: position, brand: brand, gender: gender,
                 idNumber: idNumber, phone: phone, startDate: startDate, endDate: endDate,
-                contractNo: contractNo, signStatus: signStatus
+                contractNo: contractNo, signStatus: signStatus,
+                contractFile: contractFile
             };
+            console.log('[合约PDF] contractFile 是否为空:', !contractFile, '前缀:', contractFile.substring(0, 50));
 
-            var editId = document.getElementById('editContractId').value;
-            var isEdit = editId && parseInt(editId) > 0;
             if (isEdit) contractData.id = parseInt(editId);
 
             var result;
@@ -4226,13 +4309,17 @@
                 document.getElementById('addContractForm').reset();
                 document.getElementById('editContractId').value = '';
                 document.getElementById('addContractModalTitle').textContent = '新增合约';
-                document.getElementById('addContractSubmitBtn').textContent = '添加';
                 var checks = document.querySelectorAll('#contractPositionCheckboxGroup input[name="contractPosition"]');
                 checks.forEach(function(cb) { cb.checked = false; });
+                var cpInput = document.getElementById('contractPdfFile');
+                if (cpInput) cpInput.value = '';
                 await loadData();
                 showToast(isEdit ? '合约信息已更新' : '合约添加成功', 'success');
             } else {
                 showToast((isEdit ? '更新' : '添加') + '失败：' + (result.error || '未知错误'), 'error');
+            }
+            } finally {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = isEdit ? '保存修改' : '添加'; }
             }
         }
 
@@ -4265,7 +4352,70 @@
                 cb.checked = positions.indexOf(cb.value) !== -1;
             });
 
+            var pdfInput = document.getElementById('contractPdfFile');
+            if (pdfInput) {
+                pdfInput.value = '';
+                if (contract.contractFile) {
+                    pdfInput.setAttribute('data-existing', contract.contractFile);
+                    pdfInput.style.borderColor = 'var(--success-color)';
+                } else {
+                    pdfInput.removeAttribute('data-existing');
+                    pdfInput.style.borderColor = '';
+                }
+            }
+
             document.getElementById('addContractModal').style.display = 'block';
+        }
+
+        // 预览合约PDF
+        async function previewContractPDF(contractId) {
+            var contract = null;
+            for (var i = 0; i < appData.contracts.length; i++) {
+                if (appData.contracts[i].id === contractId) { contract = appData.contracts[i]; break; }
+            }
+            if (!contract || !contract.contractFile) {
+                showToast('该合约未上传PDF文件', 'error');
+                return;
+            }
+
+            document.getElementById('pdfPreviewContractName').textContent = contract.artistName || '未知';
+            document.getElementById('pdfPreviewIframe').src = '';
+            document.getElementById('pdfPreviewModal').style.display = 'block';
+
+            try {
+                var base64Data = '';
+                // 内存存储模式：contractFile 本身就是 base64 数据
+                if (contract.contractFile.startsWith('data:application/pdf;base64,')) {
+                    base64Data = contract.contractFile;
+                } else if (window.electronAPI && window.electronAPI.readContractFile) {
+                    // Electron 模式：通过 IPC 读取文件
+                    var result = await window.electronAPI.readContractFile(contract.contractFile);
+                    if (result.ok) {
+                        base64Data = result.data;
+                    } else {
+                        showToast('读取PDF文件失败：' + (result.error || '未知错误'), 'error');
+                        return;
+                    }
+                } else if (DBStorage._serverMode) {
+                    // 服务器模式：通过 API 读取文件
+                    var resp = await fetch(ServerStorage._base + '/api/contracts/' + contractId + '/file', {
+                        headers: { 'Authorization': 'Bearer ' + ServerStorage._token }
+                    });
+                    var json = await resp.json();
+                    if (json.ok) {
+                        base64Data = json.data;
+                    } else {
+                        showToast('读取PDF文件失败：' + (json.error || '未知错误'), 'error');
+                        return;
+                    }
+                } else {
+                    showToast('当前环境不支持PDF预览', 'error');
+                    return;
+                }
+                document.getElementById('pdfPreviewIframe').src = base64Data;
+            } catch(e) {
+                showToast('加载PDF失败：' + e.message, 'error');
+            }
         }
 
         // 解析CSV行（支持引号包裹的字段，如 "男歌,女歌" 中的逗号不会被误拆）
@@ -4302,6 +4452,15 @@
         }
 
         // 批量上传 - 辅助函数：重置提交按钮状态
+        function readFileAsBase64(file) {
+            return new Promise(function(resolve, reject) {
+                var reader = new FileReader();
+                reader.onload = function() { resolve(reader.result); };
+                reader.onerror = function() { reject(reader.error); };
+                reader.readAsDataURL(file);
+            });
+        }
+
         function resetSubmitBtn(btn) {
             if (btn) { btn.disabled = false; btn.textContent = '上传'; }
         }

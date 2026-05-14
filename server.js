@@ -160,6 +160,20 @@ app.put('/api/contracts/:id', authMiddleware, function(req, res) {
     }
 });
 
+app.get('/api/contracts/:id/file', authMiddleware, function(req, res) {
+    try {
+        var contracts = db.getAllData().contracts;
+        var contract = contracts.find(function(c) { return c.id === parseInt(req.params.id, 10); });
+        if (!contract || !contract.contractFile) {
+            return res.json({ ok: false, error: '未找到合约文件' });
+        }
+        var base64 = db.getContractFileBase64(contract.contractFile);
+        res.json({ ok: true, data: base64 });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
 app.post('/api/salaries', authMiddleware, function(req, res) {
     try {
         var result = db.addSalaries(req.body);

@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteArtist: (id) => ipcRenderer.invoke('delete-artist', id),
   addContract: (data) => ipcRenderer.invoke('add-contract', data),
   updateContract: (data) => ipcRenderer.invoke('update-contract', data),
+  saveContractFile: (dataUrl, contractId) => ipcRenderer.invoke('save-contract-file', dataUrl, contractId),
+  readContractFile: (filePath) => ipcRenderer.invoke('read-contract-file', filePath),
   addSalaries: (salaryList) => ipcRenderer.invoke('add-salaries', salaryList),
   addEvaluations: (evalList) => ipcRenderer.invoke('add-evaluations', evalList),
   saveArtistPhotos: (artistId, photosJson) => ipcRenderer.invoke('save-artist-photos', artistId, photosJson),

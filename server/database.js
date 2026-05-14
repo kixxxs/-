@@ -24,7 +24,8 @@ function createTables() {
   db.exec("CREATE TABLE IF NOT EXISTS stores (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL UNIQUE\n  )");
   db.exec("CREATE TABLE IF NOT EXISTS artists (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    avatar TEXT DEFAULT '',\n    gender TEXT DEFAULT '',\n    store_id INTEGER,\n    store_name TEXT DEFAULT '',\n    positions TEXT DEFAULT '[]',\n    business_level TEXT DEFAULT 'C级',\n    sign_status TEXT DEFAULT '未签约',\n    daily_salary REAL DEFAULT 0,\n    status TEXT DEFAULT '在岗',\n    id_card TEXT DEFAULT '',\n    phone TEXT DEFAULT '',\n    photos TEXT DEFAULT '[]',\n    created_at TEXT DEFAULT (datetime('now','localtime')),\n    updated_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
   try { db.exec("ALTER TABLE artists ADD COLUMN photos TEXT DEFAULT '[]'"); } catch(_) {}
-  db.exec("CREATE TABLE IF NOT EXISTS contracts (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    artist_id INTEGER NOT NULL,\n    artist_name TEXT DEFAULT '',\n    positions TEXT DEFAULT '[]',\n    brand TEXT DEFAULT '',\n    gender TEXT DEFAULT '',\n    id_card TEXT DEFAULT '',\n    phone TEXT DEFAULT '',\n    start_date TEXT DEFAULT '',\n    end_date TEXT DEFAULT '',\n    contract_no TEXT DEFAULT '',\n    sign_status TEXT DEFAULT '未签约',\n    created_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
+  db.exec("CREATE TABLE IF NOT EXISTS contracts (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    artist_id INTEGER NOT NULL,\n    artist_name TEXT DEFAULT '',\n    positions TEXT DEFAULT '[]',\n    brand TEXT DEFAULT '',\n    gender TEXT DEFAULT '',\n    id_card TEXT DEFAULT '',\n    phone TEXT DEFAULT '',\n    start_date TEXT DEFAULT '',\n    end_date TEXT DEFAULT '',\n    contract_no TEXT DEFAULT '',\n    sign_status TEXT DEFAULT '未签约',\n    contract_file TEXT DEFAULT '',\n    created_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
+  try { db.exec("ALTER TABLE contracts ADD COLUMN contract_file TEXT DEFAULT ''"); } catch(_) {}
   db.exec("CREATE TABLE IF NOT EXISTS evaluations (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    artist_id INTEGER NOT NULL,\n    artist_name TEXT DEFAULT '',\n    store_name TEXT DEFAULT '',\n    overall_score REAL DEFAULT 0,\n    responsibility_score REAL DEFAULT 0,\n    stability_score REAL DEFAULT 0,\n    teamwork_score REAL DEFAULT 0,\n    adaptability_score REAL DEFAULT 0,\n    business_score REAL DEFAULT 0,\n    tags TEXT DEFAULT '[]',\n    comment TEXT DEFAULT '',\n    evaluated_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
   try { db.exec("ALTER TABLE evaluations ADD COLUMN responsibility_score REAL DEFAULT 0"); } catch(_) {}
   try { db.exec("ALTER TABLE evaluations ADD COLUMN stability_score REAL DEFAULT 0"); } catch(_) {}
@@ -141,18 +142,48 @@ function deleteArtist(id) {
 
 function addContract(data) {
   var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
+  var contractFile = saveContractFileToDisk(data.contractFile);
   var r = db.prepare(
-    "INSERT INTO contracts (artist_id, artist_name, positions, brand, gender, id_card, phone, start_date, end_date, contract_no, sign_status) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
-  ).run(0, data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '', data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约');
+    "INSERT INTO contracts (artist_id, artist_name, positions, brand, gender, id_card, phone, start_date, end_date, contract_no, sign_status, contract_file) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).run(0, data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '', data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约', contractFile);
   return { id: r.lastInsertRowid };
 }
 
 function updateContract(data) {
   var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
-  db.prepare(
-    "UPDATE contracts SET artist_name=?, positions=?, brand=?, gender=?, id_card=?, phone=?, start_date=?, end_date=?, contract_no=?, sign_status=? WHERE id=?"
-  ).run(data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '', data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约', data.id);
+  var contractFile = data.contractFile;
+  var hasNewFile = contractFile && contractFile.startsWith('data:application/pdf;base64,');
+  if (hasNewFile) {
+    contractFile = saveContractFileToDisk(contractFile);
+    db.prepare(
+      "UPDATE contracts SET artist_name=?, positions=?, brand=?, gender=?, id_card=?, phone=?, start_date=?, end_date=?, contract_no=?, sign_status=?, contract_file=? WHERE id=?"
+    ).run(data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '', data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约', contractFile, data.id);
+  } else {
+    db.prepare(
+      "UPDATE contracts SET artist_name=?, positions=?, brand=?, gender=?, id_card=?, phone=?, start_date=?, end_date=?, contract_no=?, sign_status=? WHERE id=?"
+    ).run(data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '', data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约', data.id);
+  }
   return {};
+}
+
+function saveContractFileToDisk(contractFile) {
+  if (!contractFile || !contractFile.startsWith('data:application/pdf;base64,')) return contractFile || '';
+  var matches = contractFile.match(/^data:application\/pdf;base64,(.+)$/);
+  if (!matches) return '';
+  var buffer = Buffer.from(matches[1], 'base64');
+  var pdfDir = path.join(__dirname, 'src', 'assets', 'contracts');
+  if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+  var fileName = 'contract_svr_' + Date.now() + '.pdf';
+  fs.writeFileSync(path.join(pdfDir, fileName), buffer);
+  return 'assets/contracts/' + fileName;
+}
+
+function getContractFileBase64(filePath) {
+  if (!filePath) return '';
+  var fullPath = path.join(__dirname, 'src', filePath);
+  if (!fs.existsSync(fullPath)) return '';
+  var buffer = fs.readFileSync(fullPath);
+  return 'data:application/pdf;base64,' + buffer.toString('base64');
 }
 
 function addSalaries(salaryList) {
@@ -232,7 +263,8 @@ function mapContract(c) {
     position: c.positions ? JSON.parse(c.positions).join(', ') : '',
     brand: c.brand || '', gender: c.gender || '', idNumber: c.id_card || '',
     phone: c.phone || '', startDate: c.start_date || '', endDate: c.end_date || '',
-    contractNumber: c.contract_no || '', status: c.sign_status || '未签约'
+    contractNumber: c.contract_no || '', status: c.sign_status || '未签约',
+    contractFile: c.contract_file || ''
   };
 }
 
@@ -266,7 +298,7 @@ module.exports = {
   init,
   getAllData,
   addArtist, updateArtist, deleteArtist,
-  addContract, updateContract,
+  addContract, updateContract, getContractFileBase64,
   addSalaries, addEvaluations,
   saveArtistPhotos, saveAvatar,
   resetAllData

@@ -100,8 +100,10 @@ function createTables() {
     end_date TEXT DEFAULT '',
     contract_no TEXT DEFAULT '',
     sign_status TEXT DEFAULT '未签约',
+    contract_file TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
+  try { db.run('ALTER TABLE contracts ADD COLUMN contract_file TEXT DEFAULT \'\''); } catch(_) {}
   db.run(`CREATE TABLE IF NOT EXISTS evaluations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     artist_id INTEGER NOT NULL,

@@ -56,6 +56,33 @@ ipcMain.handle('db-export-all', () => {
   }
 });
 
+ipcMain.handle('save-contract-file', async (event, dataUrl, contractId) => {
+  try {
+    const matches = dataUrl.match(/^data:application\/pdf;base64,(.+)$/);
+    if (!matches) return { ok: false, error: '无效的PDF格式' };
+    const buffer = Buffer.from(matches[1], 'base64');
+    const pdfDir = path.join(__dirname, 'src', 'assets', 'contracts');
+    if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+    const fileName = `contract_${contractId}_${Date.now()}.pdf`;
+    fs.writeFileSync(path.join(pdfDir, fileName), buffer);
+    return { ok: true, path: `assets/contracts/${fileName}` };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('read-contract-file', async (event, filePath) => {
+  try {
+    const fullPath = path.join(__dirname, 'src', filePath);
+    if (!fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
+    const buffer = fs.readFileSync(fullPath);
+    const base64 = buffer.toString('base64');
+    return { ok: true, data: 'data:application/pdf;base64,' + base64 };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('save-avatar', async (event, dataUrl, artistName) => {
   try {
     const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
@@ -166,7 +193,8 @@ ipcMain.handle('get-init-data', () => {
             startDate: c.start_date || '',
             endDate: c.end_date || '',
             contractNumber: c.contract_no || '',
-            status: c.sign_status || '未签约'
+            status: c.sign_status || '未签约',
+            contractFile: c.contract_file || ''
           };
         }),
         evaluations: (evaluations || []).map(function(e) {
@@ -251,10 +279,23 @@ ipcMain.handle('update-artist', (event, data) => {
 ipcMain.handle('add-contract', (event, data) => {
   try {
     var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
+    var contractFile = data.contractFile || '';
+    // If contractFile is a base64 data URL, save to disk and store path
+    if (contractFile && contractFile.startsWith('data:application/pdf;base64,')) {
+      var matches = contractFile.match(/^data:application\/pdf;base64,(.+)$/);
+      if (matches) {
+        var buffer = Buffer.from(matches[1], 'base64');
+        var pdfDir = path.join(__dirname, 'src', 'assets', 'contracts');
+        if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+        var fileName = 'contract_new_' + Date.now() + '.pdf';
+        fs.writeFileSync(path.join(pdfDir, fileName), buffer);
+        contractFile = 'assets/contracts/' + fileName;
+      }
+    }
     var result = Database.query(
-      "INSERT INTO contracts (artist_id, artist_name, positions, brand, gender, id_card, phone, start_date, end_date, contract_no, sign_status) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO contracts (artist_id, artist_name, positions, brand, gender, id_card, phone, start_date, end_date, contract_no, sign_status, contract_file) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
       [0, data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '',
-       data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约']
+       data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约', contractFile]
     );
     return { ok: true, data: { id: result.lastInsertRowid } };
   } catch (err) {
@@ -265,11 +306,32 @@ ipcMain.handle('add-contract', (event, data) => {
 ipcMain.handle('update-contract', (event, data) => {
   try {
     var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
-    Database.query(
-      "UPDATE contracts SET artist_name=?, positions=?, brand=?, gender=?, id_card=?, phone=?, start_date=?, end_date=?, contract_no=?, sign_status=? WHERE id=?",
-      [data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '',
-       data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约', data.id]
-    );
+    var contractFile = data.contractFile;
+    var hasNewFile = contractFile && contractFile.startsWith('data:application/pdf;base64,');
+    if (hasNewFile) {
+      var matches = contractFile.match(/^data:application\/pdf;base64,(.+)$/);
+      if (matches) {
+        var buffer = Buffer.from(matches[1], 'base64');
+        var pdfDir = path.join(__dirname, 'src', 'assets', 'contracts');
+        if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+        var fileName = 'contract_' + data.id + '_' + Date.now() + '.pdf';
+        fs.writeFileSync(path.join(pdfDir, fileName), buffer);
+        contractFile = 'assets/contracts/' + fileName;
+      }
+    }
+    if (hasNewFile) {
+      Database.query(
+        "UPDATE contracts SET artist_name=?, positions=?, brand=?, gender=?, id_card=?, phone=?, start_date=?, end_date=?, contract_no=?, sign_status=?, contract_file=? WHERE id=?",
+        [data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '',
+         data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约', contractFile, data.id]
+      );
+    } else {
+      Database.query(
+        "UPDATE contracts SET artist_name=?, positions=?, brand=?, gender=?, id_card=?, phone=?, start_date=?, end_date=?, contract_no=?, sign_status=? WHERE id=?",
+        [data.name, posJson, data.brand || '', data.gender || '', data.idNumber || '', data.phone || '',
+         data.startDate || '', data.endDate || '', data.contractNo || '', data.signStatus || '未签约', data.id]
+      );
+    }
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
