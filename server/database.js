@@ -38,6 +38,7 @@ function createTables() {
   try { db.exec("ALTER TABLE salaries ADD COLUMN team_fee REAL DEFAULT 0"); } catch(_) {}
   try { db.exec("ALTER TABLE salaries ADD COLUMN travel_fee REAL DEFAULT 0"); } catch(_) {}
   try { db.exec("ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0"); } catch(_) {}
+  db.exec("CREATE TABLE IF NOT EXISTS announcements (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    title TEXT NOT NULL DEFAULT '',\n    file_name TEXT DEFAULT '',\n    file_path TEXT DEFAULT '',\n    created_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
 }
 
 function syncStores() {
@@ -110,12 +111,15 @@ function getAllData() {
   var stores = db.prepare('SELECT * FROM stores').all();
   var salaries = db.prepare('SELECT * FROM salaries ORDER BY created_at DESC').all();
 
+  var announcements = db.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all();
+
   return {
     artists: (artists || []).map(mapArtist),
     contracts: (contracts || []).map(mapContract),
     evaluations: (evaluations || []).map(mapEvaluation),
     stores: (stores || []).map(function(s) { return s.name; }),
-    salaries: (salaries || []).map(mapSalary)
+    salaries: (salaries || []).map(mapSalary),
+    announcements: (announcements || []).map(mapAnnouncement)
   };
 }
 
@@ -226,8 +230,61 @@ function resetAllData() {
   db.exec("DELETE FROM salaries");
   db.exec("DELETE FROM evaluations");
   db.exec("DELETE FROM contracts");
+  db.exec("DELETE FROM announcements");
   db.exec("UPDATE artists SET status = '-1'");
   return {};
+}
+
+function addAnnouncement(data) {
+  var filePath = '';
+  if (data.fileData && data.fileData.startsWith('data:application/pdf;base64,')) {
+    filePath = saveAnnouncementFileToDisk(data.fileData, data.fileName);
+  }
+  var r = db.prepare(
+    "INSERT INTO announcements (title, file_name, file_path) VALUES (?,?,?)"
+  ).run(data.title || '', data.fileName || '', filePath);
+  return { id: r.lastInsertRowid };
+}
+
+function deleteAnnouncement(id) {
+  var row = db.prepare('SELECT file_path FROM announcements WHERE id = ?').get(id);
+  if (row && row.file_path) {
+    var fullPath = path.join(__dirname, 'src', row.file_path);
+    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  }
+  db.prepare('DELETE FROM announcements WHERE id = ?').run(id);
+  return {};
+}
+
+function getAnnouncementFileBase64(id) {
+  var row = db.prepare('SELECT file_path FROM announcements WHERE id = ?').get(id);
+  if (!row || !row.file_path) return '';
+  var fullPath = path.join(__dirname, 'src', row.file_path);
+  if (!fs.existsSync(fullPath)) return '';
+  var buffer = fs.readFileSync(fullPath);
+  return 'data:application/pdf;base64,' + buffer.toString('base64');
+}
+
+function saveAnnouncementFileToDisk(fileData, fileName) {
+  var matches = fileData.match(/^data:application\/pdf;base64,(.+)$/);
+  if (!matches) return '';
+  var buffer = Buffer.from(matches[1], 'base64');
+  var pdfDir = path.join(__dirname, 'src', 'assets', 'announcements');
+  if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+  var safeName = fileName.replace(/[^a-zA-Z0-9_\-一-龥]/g, '_');
+  var filePath = 'assets/announcements/' + Date.now() + '_' + safeName;
+  fs.writeFileSync(path.join(__dirname, 'src', filePath), buffer);
+  return filePath;
+}
+
+function mapAnnouncement(a) {
+  return {
+    id: a.id,
+    title: a.title || '',
+    fileName: a.file_name || '',
+    filePath: a.file_path || '',
+    createdAt: a.created_at ? a.created_at.slice(0, 19) : ''
+  };
 }
 
 function saveAvatar(dataUrl, artistName) {
@@ -301,5 +358,6 @@ module.exports = {
   addContract, updateContract, getContractFileBase64,
   addSalaries, addEvaluations,
   saveArtistPhotos, saveAvatar,
-  resetAllData
+  resetAllData,
+  addAnnouncement, deleteAnnouncement, getAnnouncementFileBase64
 };

@@ -147,6 +147,13 @@ function createTables() {
   try { db.run('ALTER TABLE salaries ADD COLUMN team_fee REAL DEFAULT 0'); } catch(_) {}
   try { db.run('ALTER TABLE salaries ADD COLUMN travel_fee REAL DEFAULT 0'); } catch(_) {}
   try { db.run('ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0'); } catch(_) {}
+  db.run(`CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL DEFAULT '',
+    file_name TEXT DEFAULT '',
+    file_path TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
 }
 
 function execSelect(sql, params) {

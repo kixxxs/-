@@ -28,6 +28,7 @@ var CapDB = (function() {
     try { db.run("ALTER TABLE salaries ADD COLUMN team_fee REAL DEFAULT 0"); } catch(_) {}
     try { db.run("ALTER TABLE salaries ADD COLUMN travel_fee REAL DEFAULT 0"); } catch(_) {}
     try { db.run("ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0"); } catch(_) {}
+    db.run("CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL DEFAULT '', file_name TEXT DEFAULT '', file_path TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now','localtime')))");
   }
 
   function execSelect(sql, params) {
@@ -300,7 +301,8 @@ var CapDB = (function() {
     var evaluations = execSelect("SELECT * FROM evaluations ORDER BY evaluated_at DESC").map(mapEvaluation);
     var stores = execSelect("SELECT name FROM stores").map(function(r) { return r.name; });
     var salaries = execSelect("SELECT * FROM salaries ORDER BY created_at DESC").map(mapSalary);
-    return { artists: artists, contracts: contracts, evaluations: evaluations, stores: stores, salaries: salaries };
+    var announcements = execSelect("SELECT * FROM announcements ORDER BY created_at DESC").map(mapAnnouncement);
+    return { artists: artists, contracts: contracts, evaluations: evaluations, stores: stores, salaries: salaries, announcements: announcements };
   }
 
   function addArtist(artistData) {
@@ -396,10 +398,34 @@ var CapDB = (function() {
     return dataUrl;
   }
 
+  function addAnnouncement(data) {
+    var result = query(
+      "INSERT INTO announcements (title, file_name, file_path) VALUES (?,?,?)",
+      [data.title || '', data.fileName || '', data.fileData || data.filePath || '']
+    );
+    return { ok: true, data: { id: result.lastInsertRowid } };
+  }
+
+  function deleteAnnouncement(id) {
+    query("DELETE FROM announcements WHERE id = ?", [id]);
+    return { ok: true };
+  }
+
+  function mapAnnouncement(a) {
+    return {
+      id: a.id,
+      title: a.title || '',
+      fileName: a.file_name || '',
+      filePath: a.file_path || '',
+      createdAt: a.created_at ? a.created_at.slice(0, 19) : ''
+    };
+  }
+
   function resetAllData() {
     query("DELETE FROM salaries");
     query("DELETE FROM evaluations");
     query("DELETE FROM contracts");
+    query("DELETE FROM announcements");
     query("UPDATE artists SET status = '-1'");
     return { ok: true };
   }
@@ -417,6 +443,8 @@ var CapDB = (function() {
     addEvaluations: addEvaluations,
     saveArtistPhotos: saveArtistPhotos,
     saveAvatar: saveAvatar,
-    resetAllData: resetAllData
+    resetAllData: resetAllData,
+    addAnnouncement: addAnnouncement,
+    deleteAnnouncement: deleteAnnouncement
   };
 })();

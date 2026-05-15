@@ -15,16 +15,8 @@ app.use(express.json({ limit: '50mb' }));
 
 // ===== Login accounts (same as frontend) =====
 var LOGIN_ACCOUNTS = [
-    { account: 'admin',    password: 'admin123',   label: '管理员' },
-    { account: 'manager1', password: 'mgr123456',  label: '经理 - 张伟' },
-    { account: 'manager2', password: 'mgr123456',  label: '经理 - 李娜' },
-    { account: 'hr1',      password: 'hr123456',   label: '人事 - 王芳' },
-    { account: 'hr2',      password: 'hr123456',   label: '人事 - 刘洋' },
-    { account: 'finance1', password: 'fin123456',  label: '财务 - 陈静' },
-    { account: 'finance2', password: 'fin123456',  label: '财务 - 赵磊' },
-    { account: 'store1',   password: 'store1234',  label: '门店经理 - 周明' },
-    { account: 'store2',   password: 'store1234',  label: '门店经理 - 吴鑫' },
-    { account: 'viewer',   password: 'view1234',   label: '访客(只读)' }
+    { account: 'admin', password: 'hezong123', label: '超级管理员', role: 'admin' },
+    { account: 'coach', password: 'hz123',     label: '音乐教练',   role: 'coach' }
 ];
 
 // ===== Token store (in-memory, survives server restart = all clients re-login) =====
@@ -83,9 +75,9 @@ app.post('/api/login', function(req, res) {
     }
 
     var token = generateToken();
-    tokenStore[token] = { account: found.account, label: found.label, createdAt: Date.now() };
+    tokenStore[token] = { account: found.account, label: found.label, role: found.role || 'coach', createdAt: Date.now() };
 
-    res.json({ ok: true, user: { account: found.account, label: found.label }, token: token });
+    res.json({ ok: true, user: { account: found.account, label: found.label, role: found.role || 'coach' }, token: token });
 });
 
 app.post('/api/logout', authMiddleware, function(req, res) {
@@ -96,6 +88,14 @@ app.post('/api/logout', authMiddleware, function(req, res) {
     }
     res.json({ ok: true });
 });
+
+// ===== Admin-only middleware =====
+function adminMiddleware(req, res, next) {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ ok: false, error: '仅超级管理员可执行此操作' });
+    }
+    next();
+}
 
 // ===== Data endpoints (all protected) =====
 
@@ -108,7 +108,7 @@ app.get('/api/data/all', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/artists', authMiddleware, function(req, res) {
+app.post('/api/artists', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addArtist(req.body);
         broadcast('artist-added', { id: result.id });
@@ -118,7 +118,7 @@ app.post('/api/artists', authMiddleware, function(req, res) {
     }
 });
 
-app.put('/api/artists/:id', authMiddleware, function(req, res) {
+app.put('/api/artists/:id', authMiddleware, adminMiddleware, function(req, res) {
     try {
         req.body.id = parseInt(req.params.id, 10);
         db.updateArtist(req.body);
@@ -129,7 +129,7 @@ app.put('/api/artists/:id', authMiddleware, function(req, res) {
     }
 });
 
-app.delete('/api/artists/:id', authMiddleware, function(req, res) {
+app.delete('/api/artists/:id', authMiddleware, adminMiddleware, function(req, res) {
     try {
         db.deleteArtist(parseInt(req.params.id, 10));
         broadcast('artist-deleted', { id: parseInt(req.params.id, 10) });
@@ -139,7 +139,7 @@ app.delete('/api/artists/:id', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/contracts', authMiddleware, function(req, res) {
+app.post('/api/contracts', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addContract(req.body);
         broadcast('contract-added', { id: result.id });
@@ -149,7 +149,7 @@ app.post('/api/contracts', authMiddleware, function(req, res) {
     }
 });
 
-app.put('/api/contracts/:id', authMiddleware, function(req, res) {
+app.put('/api/contracts/:id', authMiddleware, adminMiddleware, function(req, res) {
     try {
         req.body.id = parseInt(req.params.id, 10);
         db.updateContract(req.body);
@@ -174,7 +174,7 @@ app.get('/api/contracts/:id/file', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/salaries', authMiddleware, function(req, res) {
+app.post('/api/salaries', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addSalaries(req.body);
         broadcast('salaries-added', { count: result.count });
@@ -184,7 +184,7 @@ app.post('/api/salaries', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/evaluations', authMiddleware, function(req, res) {
+app.post('/api/evaluations', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addEvaluations(req.body);
         broadcast('evaluations-added', { count: result.count });
@@ -194,7 +194,7 @@ app.post('/api/evaluations', authMiddleware, function(req, res) {
     }
 });
 
-app.put('/api/artists/:id/photos', authMiddleware, function(req, res) {
+app.put('/api/artists/:id/photos', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var artistId = parseInt(req.params.id, 10);
         var photosJson = req.body.photos || '[]';
@@ -206,7 +206,7 @@ app.put('/api/artists/:id/photos', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/upload/avatar', authMiddleware, function(req, res) {
+app.post('/api/upload/avatar', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var dataUrl = req.body.dataUrl;
         var artistName = req.body.name;
@@ -221,11 +221,52 @@ app.post('/api/upload/avatar', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/reset', authMiddleware, function(req, res) {
+app.post('/api/reset', authMiddleware, adminMiddleware, function(req, res) {
     try {
         db.resetAllData();
         broadcast('data-reset', {});
         res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+// ===== 音乐部文件公告 =====
+
+app.get('/api/announcements', authMiddleware, function(req, res) {
+    try {
+        var data = db.getAllData();
+        res.json({ ok: true, data: data.announcements || [] });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.post('/api/announcements', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var result = db.addAnnouncement(req.body);
+        broadcast('announcement-added', { id: result.id });
+        res.json({ ok: true, data: result });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.delete('/api/announcements/:id', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.deleteAnnouncement(parseInt(req.params.id, 10));
+        broadcast('announcement-deleted', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.get('/api/announcements/:id/file', authMiddleware, function(req, res) {
+    try {
+        var base64 = db.getAnnouncementFileBase64(parseInt(req.params.id, 10));
+        if (!base64) return res.json({ ok: false, error: '未找到文件' });
+        res.json({ ok: true, data: base64 });
     } catch(err) {
         res.json({ ok: false, error: err.message });
     }

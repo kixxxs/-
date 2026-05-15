@@ -162,6 +162,7 @@ ipcMain.handle('get-init-data', () => {
     const evaluations = Database.query('SELECT * FROM evaluations ORDER BY evaluated_at DESC');
     const stores = Database.query('SELECT * FROM stores');
     const salaries = Database.query('SELECT * FROM salaries ORDER BY created_at DESC');
+    const announcements = Database.query('SELECT * FROM announcements ORDER BY created_at DESC');
 
     return {
       ok: true,
@@ -230,6 +231,15 @@ ipcMain.handle('get-init-data', () => {
             travelFee: s.travel_fee || 0,
             rentUtilityFee: s.rent_utility_fee || 0,
             totalAmount: s.total_amount || 0
+          };
+        }),
+        announcements: (announcements || []).map(function(a) {
+          return {
+            id: a.id,
+            title: a.title || '',
+            fileName: a.file_name || '',
+            filePath: a.file_path || '',
+            createdAt: a.created_at ? a.created_at.slice(0, 19) : ''
           };
         })
       }
@@ -392,8 +402,78 @@ ipcMain.handle('reset-all-data', () => {
     Database.query('DELETE FROM salaries');
     Database.query('DELETE FROM evaluations');
     Database.query('DELETE FROM contracts');
+    Database.query('DELETE FROM announcements');
     Database.query("UPDATE artists SET status = '-1'");
     return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// ===== 音乐部文件公告 =====
+
+ipcMain.handle('get-announcements', () => {
+  try {
+    var rows = Database.query('SELECT * FROM announcements ORDER BY created_at DESC');
+    return { ok: true, data: (rows || []).map(function(a) {
+      return {
+        id: a.id,
+        title: a.title || '',
+        fileName: a.file_name || '',
+        filePath: a.file_path || '',
+        createdAt: a.created_at ? a.created_at.slice(0, 19) : ''
+      };
+    }) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('add-announcement', async (event, data) => {
+  try {
+    var filePath = '';
+    if (data.fileData && data.fileData.startsWith('data:application/pdf;base64,')) {
+      var matches = data.fileData.match(/^data:application\/pdf;base64,(.+)$/);
+      if (matches) {
+        var buffer = Buffer.from(matches[1], 'base64');
+        var pdfDir = path.join(__dirname, 'src', 'assets', 'announcements');
+        if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+        var safeName = (data.fileName || 'file.pdf').replace(/[^a-zA-Z0-9_\-.一-龥]/g, '_');
+        filePath = 'assets/announcements/' + Date.now() + '_' + safeName;
+        fs.writeFileSync(path.join(__dirname, 'src', filePath), buffer);
+      }
+    }
+    var result = Database.query(
+      "INSERT INTO announcements (title, file_name, file_path) VALUES (?,?,?)",
+      [data.title || '', data.fileName || '', filePath]
+    );
+    return { ok: true, data: { id: result.lastInsertRowid } };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('delete-announcement', async (event, id) => {
+  try {
+    var rows = Database.query('SELECT file_path FROM announcements WHERE id = ?', [id]);
+    if (rows && rows.length > 0 && rows[0].file_path) {
+      var fullPath = path.join(__dirname, 'src', rows[0].file_path);
+      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    }
+    Database.query('DELETE FROM announcements WHERE id = ?', [id]);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('read-announcement-file', async (event, filePath) => {
+  try {
+    var fullPath = path.join(__dirname, 'src', filePath);
+    if (!fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
+    var buffer = fs.readFileSync(fullPath);
+    var base64 = buffer.toString('base64');
+    return { ok: true, data: 'data:application/pdf;base64,' + base64 };
   } catch (err) {
     return { ok: false, error: err.message };
   }

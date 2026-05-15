@@ -19,5 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addEvaluations: (evalList) => ipcRenderer.invoke('add-evaluations', evalList),
   saveArtistPhotos: (artistId, photosJson) => ipcRenderer.invoke('save-artist-photos', artistId, photosJson),
   resetAllData: () => ipcRenderer.invoke('reset-all-data'),
+  getAnnouncements: () => ipcRenderer.invoke('get-announcements'),
+  addAnnouncement: (data) => ipcRenderer.invoke('add-announcement', data),
+  deleteAnnouncement: (id) => ipcRenderer.invoke('delete-announcement', id),
+  readAnnouncementFile: (filePath) => ipcRenderer.invoke('read-announcement-file', filePath),
   isDesktop: true
 });
