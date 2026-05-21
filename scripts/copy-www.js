@@ -17,6 +17,7 @@ const dirs = [
   'www',
   'www/lib/css',
   'www/lib/js',
+  'www/lib/js/pdfjs',
   'www/lib/webfonts',
   'www/lib/fonts',
   'www/assets'
@@ -90,6 +91,16 @@ copyFile(
 copyFile(
   path.join(SRC, 'cap-db.js'),
   path.join(WWW, 'lib/js/cap-db.js')
+);
+
+// Copy PDF.js (for Capacitor/APK PDF preview)
+copyFile(
+  path.join(SRC, 'lib/pdfjs/pdf.min.mjs'),
+  path.join(WWW, 'lib/js/pdfjs/pdf.min.mjs')
+);
+copyFile(
+  path.join(SRC, 'lib/pdfjs/pdf.worker.min.mjs'),
+  path.join(WWW, 'lib/js/pdfjs/pdf.worker.min.mjs')
 );
 
 // Copy WASM

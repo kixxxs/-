@@ -22,6 +22,39 @@ var LOGIN_ACCOUNTS = [
 // ===== Token store (in-memory, survives server restart = all clients re-login) =====
 var tokenStore = {}; // token -> { account, label, createdAt }
 
+// ===== Rate limiter for login =====
+var loginAttempts = {}; // ip -> { count, firstAttempt }
+
+function isRateLimited(ip) {
+    var now = Date.now();
+    var entry = loginAttempts[ip];
+    if (!entry || now - entry.firstAttempt > 60000) {
+        loginAttempts[ip] = { count: 1, firstAttempt: now };
+        return false;
+    }
+    entry.count++;
+    if (entry.count > 5) return true;
+    return false;
+}
+
+// Periodic cleanup of expired tokens and login attempts
+setInterval(function() {
+    var now = Date.now();
+    var expired = [];
+    for (var t in tokenStore) {
+        if (now - tokenStore[t].createdAt > 24 * 60 * 60 * 1000) {
+            expired.push(t);
+        }
+    }
+    expired.forEach(function(t) { delete tokenStore[t]; });
+    // Cleanup old login attempts
+    for (var ip in loginAttempts) {
+        if (now - loginAttempts[ip].firstAttempt > 60000) {
+            delete loginAttempts[ip];
+        }
+    }
+}, 60000);
+
 function generateToken() {
     return crypto.randomBytes(32).toString('hex');
 }
@@ -33,32 +66,39 @@ function authMiddleware(req, res, next) {
     if (authHeader && authHeader.startsWith('Bearer ')) {
         token = authHeader.slice(7);
     }
-    if (!token) {
-        token = req.query.token || '';
-    }
     if (!token || !tokenStore[token]) {
         return res.status(401).json({ ok: false, error: '未登录或登录已过期' });
+    }
+    // Check token expiry
+    if (tokenStore[token].createdAt && Date.now() - tokenStore[token].createdAt > 24 * 60 * 60 * 1000) {
+        delete tokenStore[token];
+        return res.status(401).json({ ok: false, error: '登录已过期，请重新登录' });
     }
     req.user = tokenStore[token];
     next();
 }
 
 // ===== SSE connections =====
-var sseClients = [];
+var sseClients = {}; // token -> res
 
 function broadcast(eventType, payload) {
     var data = JSON.stringify(payload);
-    sseClients.forEach(function(client) {
+    for (var t in sseClients) {
         try {
-            client.write('event: ' + eventType + '\ndata: ' + data + '\n\n');
+            sseClients[t].write('event: ' + eventType + '\ndata: ' + data + '\n\n');
         } catch(e) {
-            // Client disconnected, will be removed on close
+            delete sseClients[t];
         }
-    });
+    }
 }
 
 // ===== Login =====
 app.post('/api/login', function(req, res) {
+    var ip = req.ip || req.socket.remoteAddress || 'unknown';
+    if (isRateLimited(ip)) {
+        return res.status(429).json({ ok: false, error: '尝试次数过多，请1分钟后再试' });
+    }
+
     var account = (req.body.account || '').trim();
     var password = (req.body.password || '');
 
@@ -73,6 +113,9 @@ app.post('/api/login', function(req, res) {
     if (!found || found.password !== password) {
         return res.json({ ok: false, error: '账户或密码错误，请重试' });
     }
+
+    // Successful login - clear rate limit
+    delete loginAttempts[ip];
 
     var token = generateToken();
     tokenStore[token] = { account: found.account, label: found.label, role: found.role || 'coach', createdAt: Date.now() };
@@ -288,6 +331,12 @@ app.get('/api/events', function(req, res) {
         return res.status(401).json({ ok: false, error: '未登录' });
     }
 
+    // Close old SSE connection for this token if it exists
+    if (sseClients[token]) {
+        try { sseClients[token].end(); } catch(e) {}
+        delete sseClients[token];
+    }
+
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -295,14 +344,15 @@ app.get('/api/events', function(req, res) {
         'X-Accel-Buffering': 'no'
     });
 
-    sseClients.push(res);
+    sseClients[token] = res;
 
     // Send initial keepalive
     res.write(':ok\n\n');
 
     req.on('close', function() {
-        var idx = sseClients.indexOf(res);
-        if (idx !== -1) sseClients.splice(idx, 1);
+        if (sseClients[token] === res) {
+            delete sseClients[token];
+        }
     });
 });
 

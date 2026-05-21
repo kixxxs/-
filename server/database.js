@@ -294,7 +294,9 @@ function saveAvatar(dataUrl, artistName) {
   var buffer = Buffer.from(matches[2], 'base64');
   var avatarDir = path.join(__dirname, '..', 'src', 'assets', 'avatars');
   if (!fs.existsSync(avatarDir)) fs.mkdirSync(avatarDir, { recursive: true });
-  var fileName = artistName + '_' + Date.now() + '.' + ext;
+  // Sanitize artistName to prevent path traversal
+  var safeName = String(artistName || 'unknown').replace(/[\/\\\.]{2,}/g, '_').replace(/[\/\\]/g, '_').slice(0, 100);
+  var fileName = safeName + '_' + Date.now() + '.' + ext;
   fs.writeFileSync(path.join(avatarDir, fileName), buffer);
   return 'assets/avatars/' + fileName;
 }

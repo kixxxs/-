@@ -15,7 +15,8 @@ var CapDB = (function() {
     db.run("CREATE TABLE IF NOT EXISTS stores (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)");
     db.run("CREATE TABLE IF NOT EXISTS artists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, avatar TEXT DEFAULT '', gender TEXT DEFAULT '', store_id INTEGER, store_name TEXT DEFAULT '', positions TEXT DEFAULT '[]', business_level TEXT DEFAULT 'C级', sign_status TEXT DEFAULT '未签约', daily_salary REAL DEFAULT 0, status TEXT DEFAULT '在岗', id_card TEXT DEFAULT '', phone TEXT DEFAULT '', photos TEXT DEFAULT '[]', created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')))");
     try { db.run("ALTER TABLE artists ADD COLUMN photos TEXT DEFAULT '[]'"); } catch(_) {}
-    db.run("CREATE TABLE IF NOT EXISTS contracts (id INTEGER PRIMARY KEY AUTOINCREMENT, artist_id INTEGER NOT NULL, artist_name TEXT DEFAULT '', positions TEXT DEFAULT '[]', brand TEXT DEFAULT '', gender TEXT DEFAULT '', id_card TEXT DEFAULT '', phone TEXT DEFAULT '', start_date TEXT DEFAULT '', end_date TEXT DEFAULT '', contract_no TEXT DEFAULT '', sign_status TEXT DEFAULT '未签约', created_at TEXT DEFAULT (datetime('now','localtime')))");
+    db.run("CREATE TABLE IF NOT EXISTS contracts (id INTEGER PRIMARY KEY AUTOINCREMENT, artist_id INTEGER NOT NULL, artist_name TEXT DEFAULT '', positions TEXT DEFAULT '[]', brand TEXT DEFAULT '', gender TEXT DEFAULT '', id_card TEXT DEFAULT '', phone TEXT DEFAULT '', start_date TEXT DEFAULT '', end_date TEXT DEFAULT '', contract_no TEXT DEFAULT '', sign_status TEXT DEFAULT '未签约', contract_file TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now','localtime')))");
+    try { db.run("ALTER TABLE contracts ADD COLUMN contract_file TEXT DEFAULT ''"); } catch(_) {}
     db.run("CREATE TABLE IF NOT EXISTS evaluations (id INTEGER PRIMARY KEY AUTOINCREMENT, artist_id INTEGER NOT NULL, artist_name TEXT DEFAULT '', store_name TEXT DEFAULT '', overall_score REAL DEFAULT 0, responsibility_score REAL DEFAULT 0, stability_score REAL DEFAULT 0, teamwork_score REAL DEFAULT 0, adaptability_score REAL DEFAULT 0, business_score REAL DEFAULT 0, tags TEXT DEFAULT '[]', comment TEXT DEFAULT '', evaluated_at TEXT DEFAULT (datetime('now','localtime')))");
     try { db.run("ALTER TABLE evaluations ADD COLUMN responsibility_score REAL DEFAULT 0"); } catch(_) {}
     try { db.run("ALTER TABLE evaluations ADD COLUMN stability_score REAL DEFAULT 0"); } catch(_) {}
@@ -197,7 +198,8 @@ var CapDB = (function() {
       startDate: row.start_date || '',
       endDate: row.end_date || '',
       contractNumber: row.contract_no || '',
-      status: row.sign_status || '未签约'
+      status: row.sign_status || '未签约',
+      contractFile: row.contract_file || ''
     };
   }
 
@@ -339,10 +341,11 @@ var CapDB = (function() {
       (contractData.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; })
     );
     var result = query(
-      "INSERT INTO contracts (artist_id, artist_name, positions, brand, gender, id_card, phone, start_date, end_date, contract_no, sign_status) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO contracts (artist_id, artist_name, positions, brand, gender, id_card, phone, start_date, end_date, contract_no, sign_status, contract_file) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
       [0, contractData.name || '', posJson, contractData.brand || '', contractData.gender || '',
        contractData.idNumber || '', contractData.phone || '', contractData.startDate || '',
-       contractData.endDate || '', contractData.contractNo || '', contractData.signStatus || '未签约']
+       contractData.endDate || '', contractData.contractNo || '', contractData.signStatus || '未签约',
+       contractData.contractFile || '']
     );
     return { ok: true, data: { id: result.lastInsertRowid } };
   }
@@ -352,10 +355,11 @@ var CapDB = (function() {
       (contractData.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; })
     );
     query(
-      "UPDATE contracts SET artist_name=?, positions=?, brand=?, gender=?, id_card=?, phone=?, start_date=?, end_date=?, contract_no=?, sign_status=? WHERE id=?",
+      "UPDATE contracts SET artist_name=?, positions=?, brand=?, gender=?, id_card=?, phone=?, start_date=?, end_date=?, contract_no=?, sign_status=?, contract_file=? WHERE id=?",
       [contractData.name, posJson, contractData.brand || '', contractData.gender || '',
        contractData.idNumber || '', contractData.phone || '', contractData.startDate || '',
-       contractData.endDate || '', contractData.contractNo || '', contractData.signStatus || '未签约', contractData.id]
+       contractData.endDate || '', contractData.contractNo || '', contractData.signStatus || '未签约',
+       contractData.contractFile || '', contractData.id]
     );
     return { ok: true };
   }

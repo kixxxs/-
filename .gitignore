@@ -1,5 +1,5 @@
 node_modules/
-dist/
+dist*/
 .electron-cache/
 .nsis/
 *.bak
@@ -7,12 +7,10 @@ db/db/*.db
 *.db-shm
 *.db-wal
 *.db
-安装包测试文件/
 www/
 android/
 *.apk
 *.aab
 .gradle/
-dist2/
-dist3/
 *.log
+.vscode/

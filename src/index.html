@@ -157,7 +157,7 @@
         /* ---- Base Reset ---- */
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-        html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+        html { font-size: 16px; -webkit-font-smoothing: antialiased; overflow-x: hidden; width: 100%; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -166,6 +166,8 @@
             transition: background-color 0.4s ease, color 0.4s ease;
             line-height: 1.6;
             position: relative;
+            overflow-x: hidden;
+            width: 100%;
         }
 
         /* ---- Grain Texture Overlay (Noir only) ---- */
@@ -954,7 +956,7 @@
             /* Capacitor 移动端增强 */
             * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
             input, textarea, select { -webkit-user-select: text; user-select: text; }
-            body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
+            body { overscroll-behavior: none; overscroll-behavior-x: none; -webkit-overflow-scrolling: touch; }
             .modal-body { max-height: 60vh; overflow-y: auto; }
             .table td .btn { min-width: 36px; min-height: 36px; margin: 2px; border-radius: 8px; }
             .app-container { padding-top: calc(8px + var(--safe-area-top)); }
@@ -963,6 +965,90 @@
                 .v2-nav-btn:hover { background: transparent; color: var(--nav-text); }
                 .v2-nav-btn:active { background: var(--nav-hover-bg); color: var(--primary-color); }
                 .stat-card:hover { transform: none; box-shadow: none; }
+            }
+            /* Mobile salary cards */
+            .salary-cards-container {
+                max-height: 320px;
+                overflow-y: auto;
+            }
+            .salary-store-card {
+                background: var(--surface-raised);
+                border: 1px solid var(--border-light);
+                border-radius: 14px;
+                padding: 14px 16px;
+                margin-bottom: 10px;
+            }
+            .salary-store-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                margin-bottom: 2px;
+            }
+            .salary-store-header .store-name {
+                font-size: 14px;
+                font-weight: 700;
+                color: var(--text-color);
+            }
+            .salary-store-header .store-total {
+                font-size: 17px;
+                font-weight: 700;
+                color: var(--primary-color);
+                white-space: nowrap;
+            }
+            .store-person-count {
+                font-size: 11px;
+                color: var(--text-muted);
+                margin-bottom: 8px;
+            }
+            .salary-bar {
+                display: flex;
+                height: 14px;
+                border-radius: 7px;
+                overflow: hidden;
+                background: rgba(128,128,128,0.12);
+                margin-bottom: 8px;
+            }
+            .bar-segment {
+                min-width: 2px;
+            }
+            .salary-legend {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 14px;
+            }
+            .legend-item {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 11px;
+                line-height: 1.4;
+            }
+            .legend-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 2px;
+                flex-shrink: 0;
+            }
+            .legend-nature {
+                color: var(--text-muted);
+                min-width: 0;
+            }
+            .legend-amount {
+                font-weight: 600;
+                color: var(--text-color);
+                white-space: nowrap;
+                margin-left: 2px;
+            }
+            .legend-pct {
+                color: var(--text-muted);
+                opacity: 0.7;
+                margin-left: 1px;
+            }
+            .salary-empty-state {
+                text-align: center;
+                color: var(--text-muted);
+                padding: 32px 0;
+                font-size: 13px;
             }
         }
     </style>
@@ -1175,7 +1261,7 @@
                     <div class="row mt-4">
                         <div class="col-md-6">
                             <div class="chart-container">
-                                <div class="chart-title">艺人业务等级分布饼图</div>
+                                <div class="chart-title">艺人业务等级分布</div>
                                 <canvas id="levelDistributionChart"></canvas>
                             </div>
                         </div>
@@ -1451,6 +1537,7 @@
                                     </select>
                                 </div>
                                 <canvas id="salaryComparisonChart"></canvas>
+                                <div id="salaryComparisonCards" class="salary-cards-container" style="display:none;"></div>
                             </div>
                         </div>
                     </div>
@@ -1852,8 +1939,9 @@
                 </div>
                 <span class="close-btn" onclick="closeModal('pdfPreviewModal')">&times;</span>
             </div>
-            <div class="modal-body" style="padding:0;overflow:hidden;position:relative;touch-action:none;" id="pdfZoomContainer">
+            <div class="modal-body" style="padding:0;overflow:hidden;position:relative;touch-action:auto;" id="pdfZoomContainer">
                 <iframe id="pdfPreviewIframe" style="width:100%;height:75vh;border:none;transform-origin:0 0;transition:transform 0.15s ease;" scrolling="auto"></iframe>
+                <div id="pdfCanvasViewer" style="display:none;width:100%;height:75vh;overflow:auto;padding:12px;background:var(--body-bg);text-align:center;-webkit-overflow-scrolling:touch;"></div>
             </div>
         </div>
     </div>
@@ -2507,6 +2595,7 @@
 
         var _useMemoryStore = false;
         var _useCapacitorStore = false;
+        var _pdfPreviewLock = false;
         // Capacitor 环境检测（由 capacitor.js 注入 window.Capacitor）
         if (typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
             _useCapacitorStore = true;
@@ -3300,14 +3389,14 @@
 
             filtered.forEach(function(artist) {
                 var row = document.createElement('tr');
-                row.innerHTML = '<td><img src="' + (artist.avatar || 'https://picsum.photos/id/' + (artist.id + 10) + '/40/40') + '" alt="' + artist.name + '" class="artist-avatar" onclick="openArtistDetail(' + artist.id + ')" style="cursor:pointer;" title="点击查看艺人详情"></td>'
-                    + '<td><a href="javascript:void(0)" onclick="openArtistDetail(' + artist.id + ')" style="color:var(--primary-color);text-decoration:none;font-weight:500;">' + artist.name + '</a></td>'
-                    + '<td>' + artist.store + '</td>'
-                    + '<td>' + artist.position + '</td>'
-                    + '<td>' + artist.level + '</td>'
-                    + '<td><span class="badge badge-primary">' + artist.contractStatus + '</span></td>'
-                    + '<td>¥' + artist.dailySalary + '</td>'
-                    + '<td><span class="badge ' + (artist.status === '在岗' ? 'badge-success' : 'badge-warning') + '">' + artist.status + '</span></td>'
+                row.innerHTML = '<td><img src="' + escapeHtml(artist.avatar || 'https://picsum.photos/id/' + (artist.id + 10) + '/40/40') + '" alt="' + escapeHtml(artist.name) + '" class="artist-avatar" onclick="openArtistDetail(' + artist.id + ')" style="cursor:pointer;" title="点击查看艺人详情"></td>'
+                    + '<td><a href="javascript:void(0)" onclick="openArtistDetail(' + artist.id + ')" style="color:var(--primary-color);text-decoration:none;font-weight:500;">' + escapeHtml(artist.name) + '</a></td>'
+                    + '<td>' + escapeHtml(artist.store) + '</td>'
+                    + '<td>' + escapeHtml(artist.position) + '</td>'
+                    + '<td>' + escapeHtml(artist.level) + '</td>'
+                    + '<td><span class="badge badge-primary">' + escapeHtml(artist.contractStatus) + '</span></td>'
+                    + '<td>¥' + escapeHtml(artist.dailySalary) + '</td>'
+                    + '<td><span class="badge ' + (artist.status === '在岗' ? 'badge-success' : 'badge-warning') + '">' + escapeHtml(artist.status) + '</span></td>'
                     + '<td>'
                     + '<button class="btn btn-sm btn-info me-1" onclick="editArtist(' + artist.id + ')"><i class="fas fa-edit"></i></button>'
                     + '<button class="btn btn-sm btn-danger" onclick="deleteArtist(' + artist.id + ')"><i class="fas fa-trash"></i></button>'
@@ -3363,19 +3452,17 @@
             } else {
                 filtered.forEach(function(contract) {
                     var row = document.createElement('tr');
-                    var nameHtml = contract.contractFile
-                        ? '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:underline;cursor:pointer;" title="点击预览合约PDF">' + (contract.artistName || '未知') + '</a>'
-                        : (contract.artistName || '未知');
+                    var nameHtml = '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:' + (contract.contractFile ? 'underline' : 'none') + ';cursor:pointer;" title="' + (contract.contractFile ? '点击预览合约PDF' : '暂未上传PDF文件') + '">' + escapeHtml(contract.artistName || '未知') + '</a>';
                     row.innerHTML = '<td>' + nameHtml + '</td>'
-                        + '<td>' + contract.position + '</td>'
-                        + '<td>' + (contract.brand || '') + '</td>'
-                        + '<td>' + (contract.gender || '') + '</td>'
-                        + '<td>' + (contract.idNumber || '') + '</td>'
-                        + '<td>' + (contract.phone || '') + '</td>'
-                        + '<td>' + (contract.startDate || '') + '</td>'
-                        + '<td>' + (contract.endDate || '') + '</td>'
-                        + '<td>' + (contract.contractNumber || '') + '</td>'
-                        + '<td><span class="badge badge-primary">' + contract.status + '</span></td>'
+                        + '<td>' + escapeHtml(contract.position) + '</td>'
+                        + '<td>' + escapeHtml(contract.brand || '') + '</td>'
+                        + '<td>' + escapeHtml(contract.gender || '') + '</td>'
+                        + '<td>' + escapeHtml(contract.idNumber || '') + '</td>'
+                        + '<td>' + escapeHtml(contract.phone || '') + '</td>'
+                        + '<td>' + escapeHtml(contract.startDate || '') + '</td>'
+                        + '<td>' + escapeHtml(contract.endDate || '') + '</td>'
+                        + '<td>' + escapeHtml(contract.contractNumber || '') + '</td>'
+                        + '<td><span class="badge badge-primary">' + escapeHtml(contract.status) + '</span></td>'
                         + '<td><button class="btn btn-sm btn-info" onclick="editContract(' + contract.id + ')"><i class="fas fa-edit"></i> 编辑</button></td>';
                     contractsList.appendChild(row);
                 });
@@ -3408,12 +3495,12 @@
             expired.forEach(contract => {
                 const row = document.createElement('tr');
                 var nameHtml = contract.contractFile
-                    ? '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:underline;cursor:pointer;" title="点击预览合约PDF">' + (contract.artistName || '未知') + '</a>'
-                    : (contract.artistName || '未知');
+                    ? '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:underline;cursor:pointer;" title="点击预览合约PDF">' + escapeHtml(contract.artistName || '未知') + '</a>'
+                    : escapeHtml(contract.artistName || '未知');
                 row.innerHTML = `
                     <td>${nameHtml}</td>
-                    <td>${contract.position}</td>
-                    <td>${contract.endDate}</td>
+                    <td>${escapeHtml(contract.position)}</td>
+                    <td>${escapeHtml(contract.endDate)}</td>
                     <td><span class="badge badge-danger">已到期</span></td>
                 `;
                 expiredArtists.appendChild(row);
@@ -3432,12 +3519,12 @@
                 const daysLeft = Math.ceil((new Date(contract.endDate) - now) / (1000 * 60 * 60 * 24));
                 const row = document.createElement('tr');
                 var nameHtml = contract.contractFile
-                    ? '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:underline;cursor:pointer;" title="点击预览合约PDF">' + (contract.artistName || '未知') + '</a>'
-                    : (contract.artistName || '未知');
+                    ? '<a href="#" onclick="previewContractPDF(' + contract.id + ');return false;" style="color:var(--primary-color);text-decoration:underline;cursor:pointer;" title="点击预览合约PDF">' + escapeHtml(contract.artistName || '未知') + '</a>'
+                    : escapeHtml(contract.artistName || '未知');
                 row.innerHTML = `
                     <td>${nameHtml}</td>
-                    <td>${contract.position}</td>
-                    <td>${contract.endDate}</td>
+                    <td>${escapeHtml(contract.position)}</td>
+                    <td>${escapeHtml(contract.endDate)}</td>
                     <td>${daysLeft}天</td>
                 `;
                 expiringArtists.appendChild(row);
@@ -3477,14 +3564,14 @@
             filtered.forEach(function(s) {
                 var row = document.createElement('tr');
                 var total = calcSalaryTotal(s);
-                row.innerHTML = '<td>' + (s.month || '') + '</td>'
-                    + '<td>' + (s.store || '') + '</td>'
-                    + '<td>' + (s.nature || '') + '</td>'
-                    + '<td>' + (s.name || '') + '</td>'
-                    + '<td>' + (s.position || '') + '</td>'
-                    + '<td>¥' + (s.dailySalary || 0) + '</td>'
-                    + '<td>' + (s.performanceDays || 0) + '</td>'
-                    + '<td>¥' + (s.monthlySalary || 0) + '</td>'
+                row.innerHTML = '<td>' + escapeHtml(s.month || '') + '</td>'
+                    + '<td>' + escapeHtml(s.store || '') + '</td>'
+                    + '<td>' + escapeHtml(s.nature || '') + '</td>'
+                    + '<td>' + escapeHtml(s.name || '') + '</td>'
+                    + '<td>' + escapeHtml(s.position || '') + '</td>'
+                    + '<td>¥' + escapeHtml(s.dailySalary || 0) + '</td>'
+                    + '<td>' + escapeHtml(s.performanceDays || 0) + '</td>'
+                    + '<td>¥' + escapeHtml(s.monthlySalary || 0) + '</td>'
                     + '<td><strong>¥' + total + '</strong></td>';
                 salaryList.appendChild(row);
             });
@@ -3840,11 +3927,11 @@
                 var tagsArray = Array.isArray(tags) ? tags : (typeof tags === 'string' && tags ? tags.split(',') : []);
                 var tagsKey = (evaluation.artistName || 'unknown') + '_' + (evaluation.evaluatedAt || '0');
                 var tagsHtml = buildEvalTagsHtml(tagsArray, tagsKey);
-                row.innerHTML = '<td>' + (evaluation.artistName || '未知') + '</td>'
-                    + '<td>' + (evaluation.storeName || '未知') + '</td>'
+                row.innerHTML = '<td>' + escapeHtml(evaluation.artistName || '未知') + '</td>'
+                    + '<td>' + escapeHtml(evaluation.storeName || '未知') + '</td>'
                     + '<td><span style="' + scoreColor + '">' + score.toFixed(1) + '</span></td>'
                     + '<td>' + tagsHtml + '</td>'
-                    + '<td>' + (evaluation.evaluatedAt || '') + '</td>'
+                    + '<td>' + escapeHtml(evaluation.evaluatedAt || '') + '</td>'
                     + '<td style="min-width:120px;">' + sparklineHtml + '</td>';
                 evaluationList.appendChild(row);
             });
@@ -3892,7 +3979,7 @@
                 var t = tag.trim();
                 if (!t) return;
                 var cls = isNegativeTag(t) ? 'eval-tag eval-tag-negative' : 'eval-tag eval-tag-positive';
-                html += '<span class="' + cls + '">' + t + '</span>';
+                html += '<span class="' + cls + '">' + escapeHtml(t) + '</span>';
             });
             if (hidden.length > 0) {
                 html += '<span class="eval-tag-more" onclick="toggleEvalTags(\'' + uid + '\')" title="展开全部标签">+' + hidden.length + '</span>';
@@ -3969,39 +4056,62 @@
             updateSalaryComparisonChart();
         }
 
-        // 艺人等级分布饼图
+        // 艺人等级分布柱状图
         function updateLevelDistributionChart() {
             const canvas = document.getElementById('levelDistributionChart');
+            if (!canvas) return;
             const ctx = canvas.getContext('2d');
             if (chartInstances.levelDistribution) chartInstances.levelDistribution.destroy();
-            const levelCounts = {};
 
-            appData.artists.forEach(artist => {
+            var levelCounts = {};
+            appData.artists.forEach(function(artist) {
                 levelCounts[artist.level] = (levelCounts[artist.level] || 0) + 1;
             });
 
+            var labels = Object.keys(levelCounts);
+            var data = Object.values(levelCounts);
+            var colors = getChartColors();
+            var barColors = labels.map(function(_, i) { return colors[i % colors.length]; });
+
             var tOpts = getChartThemeOptions();
+            var isMobile = window.innerWidth < 768;
             chartInstances.levelDistribution = new Chart(ctx, {
-                type: 'pie',
+                type: 'bar',
                 data: {
-                    labels: Object.keys(levelCounts),
+                    labels: labels,
                     datasets: [{
-                        data: Object.values(levelCounts),
-                        backgroundColor: getChartColors().slice(0, 6)
+                        label: '人数',
+                        data: data,
+                        backgroundColor: barColors,
+                        borderColor: barColors,
+                        borderWidth: 1,
+                        borderRadius: 4
                     }]
                 },
                 options: {
                     responsive: true,
                     plugins: {
-                        legend: {
-                            position: window.innerWidth < 768 ? 'bottom' : 'right',
-                            labels: {
-                                padding: window.innerWidth < 768 ? 8 : 10,
-                                color: tOpts.textColor,
-                                font: {
-                                    size: window.innerWidth < 768 ? 11 : 12
-                                }
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) { return ctx.parsed.y + '人'; }
                             }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: tOpts.textColor, font: { size: isMobile ? 10 : 12 } },
+                            grid: { display: false }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                color: tOpts.textColor,
+                                font: { size: isMobile ? 10 : 12 },
+                                callback: function(v) { return Math.floor(v) === v ? v : ''; }
+                            },
+                            grid: { color: tOpts.gridColor }
                         }
                     }
                 }
@@ -4057,9 +4167,13 @@
                     plugins: {
                         legend: {
                             position: 'top',
+                            align: 'start',
                             labels: {
                                 color: tOpts2.textColor,
-                                font: { size: window.innerWidth < 768 ? 10 : 12 }
+                                font: { size: window.innerWidth < 768 ? 9 : 12 },
+                                padding: window.innerWidth < 768 ? 6 : 12,
+                                boxWidth: window.innerWidth < 768 ? 10 : 14,
+                                boxHeight: window.innerWidth < 768 ? 10 : 14
                             }
                         }
                     },
@@ -4179,6 +4293,21 @@
             var storeTotalCounts = stores.map(function(st) {
                 return allLabels.reduce(function(sum, n) { return sum + (storeNatureCount[st][n] || 0); }, 0);
             });
+
+            // Mobile: render cards instead of stacked bar chart
+            if (window.innerWidth < 768) {
+                canvas.style.display = 'none';
+                var cardsContainer = document.getElementById('salaryComparisonCards');
+                if (cardsContainer) {
+                    cardsContainer.style.display = '';
+                    renderSalaryCards(stores, natures, allLabels, hqSubs, storeNature, storeNatureCount, storeTotals, storeTotalCounts);
+                }
+                return;
+            }
+            // Desktop: show canvas, hide cards
+            canvas.style.display = '';
+            var cardsContainer2 = document.getElementById('salaryComparisonCards');
+            if (cardsContainer2) cardsContainer2.style.display = 'none';
 
             var tOpts3 = getChartThemeOptions();
             chartInstances.salaryComparison = new Chart(ctx, {
@@ -4307,6 +4436,78 @@
                     }
                 }]
             });
+        }
+
+        // 移动端门店薪资卡片
+        function renderSalaryCards(stores, natures, allLabels, hqSubs, storeNature, storeNatureCount, storeTotals, storeTotalCounts) {
+            var container = document.getElementById('salaryComparisonCards');
+            if (!container) return;
+
+            // Build label->color map (same logic as chart datasets)
+            var colors = getChartColors();
+            var hasHQ = hqSubs.length > 0;
+            var hqBaseColor = hasHQ ? colors[natures.length % colors.length] : null;
+            var hqFeeColors = hasHQ ? [
+                hqBaseColor,
+                adjustBrightness(hqBaseColor, 30),
+                adjustBrightness(hqBaseColor, -20),
+                adjustBrightness(hqBaseColor, 50)
+            ] : [];
+            var labelColors = {};
+            allLabels.forEach(function(label) {
+                if (label.indexOf('总部-') === 0) {
+                    var hqIdx = hqSubs.indexOf(label);
+                    labelColors[label] = hqFeeColors[hqIdx] || colors[0];
+                } else {
+                    var natureIdx = natures.indexOf(label);
+                    labelColors[label] = colors[natureIdx % colors.length];
+                }
+            });
+
+            var html = '';
+            for (var i = 0; i < stores.length; i++) {
+                var st = stores[i];
+                var total = storeTotals[i] || 0;
+                var totalCount = storeTotalCounts[i] || 0;
+                if (total === 0 && totalCount === 0) continue;
+
+                // Build bar segments + legend items for this store
+                var barHtml = '';
+                var legendHtml = '';
+                for (var j = 0; j < allLabels.length; j++) {
+                    var label = allLabels[j];
+                    var amount = Math.round(storeNature[st][label]) || 0;
+                    if (amount === 0) continue;
+                    var pct = (amount / total * 100);
+                    var count = storeNatureCount[st][label] || 0;
+                    var color = labelColors[label];
+                    var w = Math.max(pct, 1.5).toFixed(2);
+                    barHtml += '<div class="bar-segment" style="width:' + w + '%;background:' + color + ';" title="' + escapeHtml(label) + ': ' + pct.toFixed(1) + '%"></div>';
+                    var isFee = (label.indexOf('总部-') === 0);
+                    legendHtml += '<div class="legend-item">'
+                        + '<span class="legend-dot" style="background:' + color + ';"></span>'
+                        + '<span class="legend-nature">' + escapeHtml(label)
+                        + (isFee ? '' : ' (' + count + '人)') + '</span>'
+                        + '<span class="legend-amount">¥' + amount.toLocaleString() + '</span>'
+                        + '<span class="legend-pct">' + pct.toFixed(1) + '%</span>'
+                        + '</div>';
+                }
+
+                html += '<div class="salary-store-card">'
+                    + '<div class="salary-store-header">'
+                    + '<span class="store-name">' + escapeHtml(st) + '</span>'
+                    + '<span class="store-total">¥' + total.toLocaleString() + '</span>'
+                    + '</div>'
+                    + '<div class="store-person-count">共 ' + totalCount + '人</div>'
+                    + '<div class="salary-bar">' + barHtml + '</div>'
+                    + '<div class="salary-legend">' + legendHtml + '</div>'
+                    + '</div>';
+            }
+
+            if (html === '') {
+                html = '<div class="salary-empty-state">暂无薪资数据</div>';
+            }
+            container.innerHTML = html;
         }
 
         // 生成星级显示
@@ -4521,6 +4722,9 @@
         function closeModal(modalId) {
             var el = document.getElementById(modalId);
             if (el) el.style.display = 'none';
+            if (modalId === 'pdfPreviewModal') {
+                clearPdfPreviewContent();
+            }
         }
 
         // 生成新ID
@@ -4764,37 +4968,25 @@
 
         // 预览合约PDF
         async function previewContractPDF(contractId) {
+            if (_pdfPreviewLock) return;
+            _pdfPreviewLock = true;
             var contract = null;
             for (var i = 0; i < appData.contracts.length; i++) {
                 if (appData.contracts[i].id === contractId) { contract = appData.contracts[i]; break; }
             }
             if (!contract || !contract.contractFile) {
                 showToast('该合约未上传PDF文件', 'error');
+                _pdfPreviewLock = false;
                 return;
             }
-
-            document.getElementById('pdfPreviewTitle').textContent = '合约PDF预览';
-            document.getElementById('pdfPreviewSubtitle').textContent = contract.artistName || '未知';
-            resetPdfZoom();
-            document.getElementById('pdfPreviewIframe').src = '';
-            document.getElementById('pdfPreviewModal').style.display = 'block';
 
             try {
                 var base64Data = '';
                 // 内存存储模式：contractFile 本身就是 base64 数据
                 if (contract.contractFile.startsWith('data:application/pdf;base64,')) {
                     base64Data = contract.contractFile;
-                } else if (window.electronAPI && window.electronAPI.readContractFile) {
-                    // Electron 模式：通过 IPC 读取文件
-                    var result = await window.electronAPI.readContractFile(contract.contractFile);
-                    if (result.ok) {
-                        base64Data = result.data;
-                    } else {
-                        showToast('读取PDF文件失败：' + (result.error || '未知错误'), 'error');
-                        return;
-                    }
                 } else if (DBStorage._serverMode) {
-                    // 服务器模式：通过 API 读取文件
+                    // 服务器模式优先：通过 API 读取文件（无论是Electron还是浏览器）
                     var resp = await fetch(ServerStorage._base + '/api/contracts/' + contractId + '/file', {
                         headers: { 'Authorization': 'Bearer ' + ServerStorage._token }
                     });
@@ -4803,15 +4995,31 @@
                         base64Data = json.data;
                     } else {
                         showToast('读取PDF文件失败：' + (json.error || '未知错误'), 'error');
+                        closeModal('pdfPreviewModal');
+                        return;
+                    }
+                } else if (window.electronAPI && window.electronAPI.readContractFile) {
+                    // Electron 本地模式：通过 IPC 读取本地文件
+                    var result = await window.electronAPI.readContractFile(contract.contractFile);
+                    if (result.ok) {
+                        base64Data = result.data;
+                    } else {
+                        showToast('读取PDF文件失败：' + (result.error || '未知错误'), 'error');
+                        closeModal('pdfPreviewModal');
                         return;
                     }
                 } else {
                     showToast('当前环境不支持PDF预览', 'error');
+                    closeModal('pdfPreviewModal');
                     return;
                 }
-                document.getElementById('pdfPreviewIframe').src = base64Data;
+
+                await showPdfPreview(base64Data, '合约PDF预览', contract.artistName || '未知');
             } catch(e) {
                 showToast('加载PDF失败：' + e.message, 'error');
+                closeModal('pdfPreviewModal');
+            } finally {
+                _pdfPreviewLock = false;
             }
         }
 
@@ -4839,12 +5047,14 @@
             var html = '';
             filtered.forEach(function(a, idx) {
                 var dateStr = (a.createdAt || '').slice(0, 10);
-                html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;' +
+                html += '<div role="button" tabindex="0" onclick="previewAnnouncementPDF(' + a.id + ')" ' +
+                    'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();previewAnnouncementPDF(' + a.id + ')}" ' +
+                    'style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;cursor:pointer;-webkit-tap-highlight-color:rgba(212,168,83,0.18);' +
                     (idx < filtered.length - 1 ? 'border-bottom:1px solid var(--border-light);' : '') + '">' +
                     '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">' +
                     '<i class="fas fa-file-pdf" style="color:#e74c3c;font-size:18px;flex-shrink:0;"></i>' +
                     '<div style="min-width:0;">' +
-                    '<a href="javascript:void(0)" onclick="previewAnnouncementPDF(' + a.id + ')" style="color:var(--primary-color);font-size:14px;font-weight:600;text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(a.title || a.fileName || '未命名文件') + '</a>' +
+                    '<div style="color:var(--primary-color);font-size:14px;font-weight:600;text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(a.title || a.fileName || '未命名文件') + '</div>' +
                     '<div style="font-size:11px;color:var(--text-muted);">' + escapeHtml(a.fileName || '') + (dateStr ? ' · ' + dateStr : '') + '</div>' +
                     '</div></div></div>';
             });
@@ -4856,52 +5066,402 @@
         }
 
         async function previewAnnouncementPDF(id) {
-            try {
-                var announcements = appData.announcements || [];
-                var ann = null;
-                for (var i = 0; i < announcements.length; i++) {
-                    if (announcements[i].id === id) { ann = announcements[i]; break; }
-                }
-                if (!ann) { showToast('公告文件不存在', 'error'); return; }
+            if (_pdfPreviewLock) return;
+            _pdfPreviewLock = true;
+            var announcements = appData.announcements || [];
+            var ann = null;
+            for (var i = 0; i < announcements.length; i++) {
+                if (announcements[i].id === id) { ann = announcements[i]; break; }
+            }
+            if (!ann) {
+                showToast('公告文件不存在', 'error');
+                _pdfPreviewLock = false;
+                return;
+            }
+            if (!ann.filePath) {
+                showToast('该公告未上传PDF文件', 'error');
+                _pdfPreviewLock = false;
+                return;
+            }
 
+            try {
                 var base64Data = '';
                 if (ann.filePath && ann.filePath.startsWith('data:application/pdf;base64,')) {
                     base64Data = ann.filePath;
-                } else if (window.electronAPI && window.electronAPI.readAnnouncementFile) {
-                    var result = await window.electronAPI.readAnnouncementFile(ann.filePath);
-                    if (result.ok) { base64Data = result.data; }
-                    else { showToast('读取文件失败：' + result.error, 'error'); return; }
                 } else if (DBStorage._serverMode) {
+                    // 服务器模式优先：通过 API 读取文件
                     var resp = await fetch(ServerStorage._base + '/api/announcements/' + id + '/file', {
                         headers: { 'Authorization': 'Bearer ' + ServerStorage._token }
                     });
                     var body = await resp.json().catch(function() { return {}; });
                     if (body.ok && body.data) { base64Data = body.data; }
-                    else { showToast('读取文件失败', 'error'); return; }
+                    else { showToast('读取文件失败', 'error'); closeModal('pdfPreviewModal'); return; }
+                } else if (window.electronAPI && window.electronAPI.readAnnouncementFile) {
+                    // Electron 本地模式：通过 IPC 读取本地文件
+                    var result = await window.electronAPI.readAnnouncementFile(ann.filePath);
+                    if (result.ok) { base64Data = result.data; }
+                    else { showToast('读取文件失败：' + result.error, 'error'); closeModal('pdfPreviewModal'); return; }
                 } else {
-                    showToast('当前环境不支持PDF预览', 'error'); return;
+                    showToast('当前环境不支持PDF预览', 'error'); closeModal('pdfPreviewModal'); return;
                 }
 
-                document.getElementById('pdfPreviewTitle').textContent = '文件预览';
-                document.getElementById('pdfPreviewSubtitle').textContent = '';
-                resetPdfZoom();
-                document.getElementById('pdfPreviewIframe').src = base64Data;
-                openModal('pdfPreviewModal');
+                await showPdfPreview(base64Data, '文件预览', '');
             } catch(e) {
                 showToast('加载PDF失败：' + e.message, 'error');
+                closeModal('pdfPreviewModal');
+            } finally {
+                _pdfPreviewLock = false;
             }
         }
 
+        // ===== PDF.js 本地渲染（用于 Capacitor/移动端，不依赖 WebView 原生 PDF 能力）=====
+        var _pdfCurrentBase64 = '';
+        var _pdfRenderToken = 0;
+        var _pdfJsModulePromise = null;
+
+        function isNativePdfPreview() {
+            return typeof Capacitor !== 'undefined'
+                && Capacitor.isNativePlatform
+                && Capacitor.isNativePlatform();
+        }
+
+        function clearPdfPreviewContent() {
+            _pdfRenderToken++;
+            _pdfCurrentBase64 = '';
+            _pdfPageMetas = [];
+            if (_pdfDoc && _pdfDoc.cleanup) _pdfDoc.cleanup();
+            _pdfDoc = null;
+            var iframe = document.getElementById('pdfPreviewIframe');
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (viewer && _pdfViewerScrollAttached) {
+                viewer.removeEventListener('scroll', _onPdfViewerScroll);
+                _pdfViewerScrollAttached = false;
+            }
+            if (iframe) {
+                iframe.src = '';
+                iframe.style.display = '';
+                iframe.style.transform = '';
+            }
+            if (viewer) {
+                viewer.innerHTML = '';
+                viewer.style.display = 'none';
+            }
+        }
+
+        function base64PdfToBytes(base64Data) {
+            var matches = base64Data && base64Data.match(/^data:application\/pdf;base64,(.+)$/);
+            if (!matches) throw new Error('PDF数据格式无效');
+            var binary = atob(matches[1].replace(/\s/g, ''));
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        function loadPdfJs() {
+            if (_pdfJsModulePromise) return _pdfJsModulePromise;
+            if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+
+            var moduleUrl = new URL('lib/js/pdfjs/pdf.min.mjs', window.location.href).toString();
+            var workerUrl = new URL('lib/js/pdfjs/pdf.worker.min.mjs', window.location.href).toString();
+
+            _pdfJsModulePromise = import(moduleUrl).then(function(pdfjsLib) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+                return pdfjsLib;
+            });
+            return _pdfJsModulePromise;
+        }
+
+        async function showPdfPreview(base64Data, title, subtitle) {
+            if (!base64Data || !base64Data.startsWith('data:application/pdf;base64,')) {
+                throw new Error('PDF数据格式无效');
+            }
+
+            var modal = document.getElementById('pdfPreviewModal');
+            var iframe = document.getElementById('pdfPreviewIframe');
+            var viewer = document.getElementById('pdfCanvasViewer');
+            document.getElementById('pdfPreviewTitle').textContent = title || 'PDF预览';
+            document.getElementById('pdfPreviewSubtitle').textContent = subtitle || '';
+
+            _pdfCurrentBase64 = '';
+            if (_pdfDoc && _pdfDoc.cleanup) _pdfDoc.cleanup();
+            _pdfDoc = null;
+            resetPdfZoom();
+            _pdfCurrentBase64 = base64Data;
+            _pdfRenderToken++;
+
+            if (iframe) {
+                iframe.src = '';
+                iframe.style.display = '';
+                iframe.style.transform = '';
+            }
+            if (viewer) {
+                viewer.innerHTML = '';
+                viewer.style.display = 'none';
+            }
+            if (modal) modal.style.display = 'block';
+
+            if (isNativePdfPreview()) {
+                if (iframe) iframe.style.display = 'none';
+                if (viewer) {
+                    viewer.style.display = 'block';
+                    viewer.innerHTML = '<div style="padding:32px;color:var(--text-muted);">PDF加载中...</div>';
+                }
+                await renderPdfToCanvas(base64Data);
+            } else if (iframe) {
+                iframe.src = base64Data;
+            }
+        }
+
+        async function _getPdfDoc(base64Data) {
+            if (_pdfDoc) return _pdfDoc;
+            var pdfjsLib = await loadPdfJs();
+            var bytes = base64PdfToBytes(base64Data);
+            var loadingTask = pdfjsLib.getDocument({ data: bytes });
+            _pdfDoc = await loadingTask.promise;
+            return _pdfDoc;
+        }
+
+        function schedulePdfReRender() {
+            if (_pdfReRenderPending) return;
+            _pdfReRenderPending = true;
+            requestAnimationFrame(function() {
+                _pdfReRenderPending = false;
+                if (!_pdfCurrentBase64) return;
+                if (_pdfPageMetas.length) {
+                    reRenderPages();
+                } else {
+                    renderPdfToCanvas(_pdfCurrentBase64).catch(function(e) {
+                        console.warn('PDF re-render failed:', e.message);
+                    });
+                }
+            });
+        }
+
+        var _pdfPageMetas = [];
+        var _pdfViewerScrollAttached = false;
+
+        function _renderOnePage(meta, deviceScale) {
+            if (meta.rendered || !_pdfDoc) return Promise.resolve();
+            var renderToken = _pdfRenderToken;
+            return _pdfDoc.getPage(meta.pageNum).then(function(page) {
+                if (renderToken !== _pdfRenderToken) return;
+                var viewport = meta.viewport;
+                var canvas = document.createElement('canvas');
+                canvas.style.cssText = 'display:block;max-width:none;';
+                canvas.width = Math.floor(viewport.width * deviceScale);
+                canvas.height = Math.floor(viewport.height * deviceScale);
+                canvas.style.width = Math.floor(viewport.width) + 'px';
+                canvas.style.height = Math.floor(viewport.height) + 'px';
+                meta.placeholder.innerHTML = '';
+                meta.placeholder.appendChild(canvas);
+                var ctx = canvas.getContext('2d');
+                return page.render({
+                    canvasContext: ctx,
+                    viewport: viewport,
+                    transform: deviceScale !== 1 ? [deviceScale, 0, 0, deviceScale, 0, 0] : null
+                }).promise.then(function() {
+                    meta.rendered = true;
+                    meta.canvas = canvas;
+                });
+            });
+        }
+
+        function _unrenderOnePage(meta) {
+            if (!meta.rendered) return;
+            if (meta.canvas) {
+                meta.canvas.width = 0;
+                meta.canvas.height = 0;
+                meta.canvas.remove();
+                meta.canvas = null;
+            }
+            meta.rendered = false;
+            meta.placeholder.innerHTML = '';
+            var label = document.createElement('div');
+            label.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#888;font-size:13px;pointer-events:none;';
+            label.textContent = '第' + meta.pageNum + '页';
+            meta.placeholder.appendChild(label);
+        }
+
+        function _renderVisiblePages() {
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (!viewer || !_pdfPageMetas.length) return;
+            var viewerRect = viewer.getBoundingClientRect();
+            var renderBuf = Math.max(600, viewer.clientHeight);
+            var unrenderBuf = Math.max(1800, viewer.clientHeight * 2);
+            var visibleTop = -renderBuf;
+            var visibleBottom = viewer.clientHeight + renderBuf;
+            var keepTop = -unrenderBuf;
+            var keepBottom = viewer.clientHeight + unrenderBuf;
+            var deviceScale = _pdfDeviceScale;
+            for (var i = 0; i < _pdfPageMetas.length; i++) {
+                var meta = _pdfPageMetas[i];
+                var pr = meta.placeholder.getBoundingClientRect();
+                var top = pr.top - viewerRect.top;
+                var bottom = pr.bottom - viewerRect.top;
+                if (meta.rendered) {
+                    if (bottom < keepTop || top > keepBottom) {
+                        _unrenderOnePage(meta);
+                    }
+                } else {
+                    if (bottom >= visibleTop && top <= visibleBottom) {
+                        _renderOnePage(meta, deviceScale);
+                    }
+                }
+            }
+        }
+
+        var _pdfDeviceScale = 2;
+
+        async function renderPdfToCanvas(base64Data) {
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (!viewer) throw new Error('PDF预览容器不存在');
+
+            var renderToken = ++_pdfRenderToken;
+            var pdf = await _getPdfDoc(base64Data);
+            if (renderToken !== _pdfRenderToken) return;
+
+            // Remove old scroll listener
+            if (_pdfViewerScrollAttached) {
+                viewer.removeEventListener('scroll', _onPdfViewerScroll);
+                _pdfViewerScrollAttached = false;
+            }
+
+            viewer.innerHTML = '';
+            var wrapper = document.createElement('div');
+            wrapper.id = 'pdfPagesWrapper';
+            wrapper.style.cssText = 'transform-origin:0 0;';
+            viewer.appendChild(wrapper);
+            _pdfPageMetas = [];
+            var availableWidth = Math.max(260, viewer.clientWidth - 24);
+
+            // Reduce deviceScale at high zoom — zoom already provides extra resolution
+            _pdfDeviceScale = _pdfZoomScale > 1.8 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+
+            // Fetch all pages in parallel for viewport dimensions
+            var pageNums = [];
+            for (var pn = 1; pn <= pdf.numPages; pn++) pageNums.push(pn);
+            var pages = await Promise.all(pageNums.map(function(pn) { return pdf.getPage(pn); }));
+            if (renderToken !== _pdfRenderToken) return;
+
+            // Create placeholder slots (no canvas yet)
+            for (var i = 0; i < pages.length; i++) {
+                var page = pages[i];
+                var pageNum = i + 1;
+                var baseViewport = page.getViewport({ scale: 1 });
+                var fitScale = Math.min(2, availableWidth / baseViewport.width);
+                var scale = Math.max(0.4, fitScale * _pdfZoomScale);
+                var viewport = page.getViewport({ scale: scale });
+
+                var slot = document.createElement('div');
+                slot.style.cssText = 'display:inline-block;margin:0 auto 12px;background:#444;box-shadow:0 2px 10px rgba(0,0,0,0.35);max-width:100%;position:relative;';
+                slot.style.width = Math.floor(viewport.width) + 'px';
+                slot.style.height = Math.floor(viewport.height) + 'px';
+                var label = document.createElement('div');
+                label.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#888;font-size:13px;pointer-events:none;';
+                label.textContent = '第' + pageNum + '页';
+                slot.appendChild(label);
+                wrapper.appendChild(slot);
+
+                _pdfPageMetas.push({
+                    pageNum: pageNum,
+                    page: page,
+                    baseWidth: baseViewport.width,
+                    baseHeight: baseViewport.height,
+                    viewport: viewport,
+                    placeholder: slot,
+                    rendered: false,
+                    canvas: null
+                });
+            }
+
+            // Render pages in/near viewport immediately
+            _renderVisiblePages();
+
+            // Lazy render on scroll (throttled via rAF)
+            if (!_pdfViewerScrollAttached) {
+                var scrollPending = false;
+                _onPdfViewerScroll = function() {
+                    if (scrollPending) return;
+                    scrollPending = true;
+                    requestAnimationFrame(function() {
+                        scrollPending = false;
+                        _renderVisiblePages();
+                    });
+                };
+                viewer.addEventListener('scroll', _onPdfViewerScroll, { passive: true });
+                _pdfViewerScrollAttached = true;
+            }
+        }
+
+        // Fast re-render after zoom change — reuses cached page objects, no re-fetch
+        function reRenderPages() {
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (!viewer || !_pdfPageMetas.length) return;
+            var availableWidth = Math.max(260, viewer.clientWidth - 24);
+            _pdfDeviceScale = _pdfZoomScale > 1.8 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+
+            for (var i = 0; i < _pdfPageMetas.length; i++) {
+                var meta = _pdfPageMetas[i];
+                var fitScale = Math.min(2, availableWidth / meta.baseWidth);
+                var scale = Math.max(0.4, fitScale * _pdfZoomScale);
+                meta.viewport = meta.page.getViewport({ scale: scale });
+                meta.placeholder.style.width = Math.floor(meta.viewport.width) + 'px';
+                meta.placeholder.style.height = Math.floor(meta.viewport.height) + 'px';
+                _unrenderOnePage(meta);
+            }
+
+            _renderVisiblePages();
+            // Keep wrapper at identity after re-render — pages now have correct pixel sizes
+            var wrapper = document.getElementById('pdfPagesWrapper');
+            if (wrapper) wrapper.style.transform = '';
+            _pdfZoomTranslateX = 0;
+            _pdfZoomTranslateY = 0;
+        }
+
+        // 保留旧的写文件函数供兼容（不再被预览流程调用，但其他模块可能引用）
+        async function writePdfToFilesystem(base64Data) {
+            if (!base64Data || !base64Data.startsWith('data:application/pdf;base64,')) return '';
+            try {
+                var matches = base64Data.match(/^data:application\/pdf;base64,(.+)$/);
+                if (!matches) return '';
+                if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
+                    var result = await Capacitor.Plugins.Filesystem.writeFile({
+                        path: 'pdf_preview_' + Date.now() + '.pdf',
+                        data: matches[1],
+                        directory: 'DATA',
+                        recursive: true
+                    });
+                    var uri = result.uri;
+                    if (typeof Capacitor.convertFileSrc === 'function') {
+                        uri = Capacitor.convertFileSrc(uri);
+                    }
+                    return uri;
+                }
+            } catch(e) {
+                console.warn('Capacitor Filesystem write failed:', e.message);
+            }
+            return '';
+        }
+
         // ===== PDF预览缩放功能 =====
+        var _pdfDoc = null;
+        var _pdfReRenderPending = false;
         var _pdfZoomScale = 1;
         var _pdfZoomTranslateX = 0;
         var _pdfZoomTranslateY = 0;
 
         function applyPdfZoom() {
             var iframe = document.getElementById('pdfPreviewIframe');
+            var wrapper = document.getElementById('pdfPagesWrapper');
             var label = document.getElementById('pdfZoomLevel');
-            if (iframe) {
-                iframe.style.transform = 'translate(' + _pdfZoomTranslateX + 'px,' + _pdfZoomTranslateY + 'px) scale(' + _pdfZoomScale + ')';
+            var transform = 'translate(' + _pdfZoomTranslateX + 'px,' + _pdfZoomTranslateY + 'px) scale(' + _pdfZoomScale + ')';
+            if (iframe && iframe.style.display !== 'none') {
+                iframe.style.transform = transform;
+            }
+            if (wrapper) {
+                wrapper.style.transform = transform;
             }
             if (label) {
                 label.textContent = Math.round(_pdfZoomScale * 100) + '%';
@@ -4916,6 +5476,17 @@
             if (_pdfZoomScale <= 1) {
                 _pdfZoomTranslateX = 0;
                 _pdfZoomTranslateY = 0;
+            }
+            if (_pdfCurrentBase64 && isNativePdfPreview()) {
+                applyPdfZoom();
+                if (_pdfPageMetas.length) {
+                    reRenderPages();
+                } else {
+                    renderPdfToCanvas(_pdfCurrentBase64).catch(function(e) {
+                        showToast('缩放PDF失败：' + e.message, 'error');
+                    });
+                }
+                return;
             }
             applyPdfZoom();
         }
@@ -4962,7 +5533,7 @@
                         e.preventDefault();
                     }
                     lastTapTime = now;
-                    if (_pdfZoomScale > 1) {
+                    if (_pdfZoomScale > 1 && !isNativePdfPreview()) {
                         dragging = true;
                         pinching = false;
                         lastX = e.touches[0].clientX;
@@ -5007,6 +5578,9 @@
 
             container.addEventListener('touchend', function(e) {
                 if (e.touches.length === 0) {
+                    if (pinching && isNativePdfPreview() && _pdfCurrentBase64) {
+                        schedulePdfReRender();
+                    }
                     dragging = false;
                     pinching = false;
                 }
@@ -6112,7 +6686,7 @@
             _currentPhotos.forEach(function(photo, idx) {
                 var thumb = document.createElement('div');
                 thumb.style.cssText = 'width:120px;height:120px;overflow:hidden;border-radius:8px;cursor:pointer;position:relative;border:2px solid var(--border-color);';
-                thumb.innerHTML = '<img src="' + photo + '" style="width:100%;height:100%;object-fit:cover;">' +
+                thumb.innerHTML = '<img src="' + escapeHtml(photo) + '" style="width:100%;height:100%;object-fit:cover;">' +
                     '<button style="position:absolute;top:4px;right:4px;background:rgba(255,0,0,0.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;line-height:1;" onclick="event.stopPropagation();deletePhoto(' + idx + ')">&times;</button>';
                 thumb.addEventListener('click', function() { openLightbox(idx); });
                 gallery.appendChild(thumb);
@@ -6210,7 +6784,7 @@
             const toastContainer = document.getElementById('toastContainer');
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
-            toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i> ${message}`;
+            toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i> ${escapeHtml(message)}`;
             
             toastContainer.appendChild(toast);
             

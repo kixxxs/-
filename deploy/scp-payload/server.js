@@ -15,20 +15,45 @@ app.use(express.json({ limit: '50mb' }));
 
 // ===== Login accounts (same as frontend) =====
 var LOGIN_ACCOUNTS = [
-    { account: 'admin',    password: 'admin123',   label: '管理员' },
-    { account: 'manager1', password: 'mgr123456',  label: '经理 - 张伟' },
-    { account: 'manager2', password: 'mgr123456',  label: '经理 - 李娜' },
-    { account: 'hr1',      password: 'hr123456',   label: '人事 - 王芳' },
-    { account: 'hr2',      password: 'hr123456',   label: '人事 - 刘洋' },
-    { account: 'finance1', password: 'fin123456',  label: '财务 - 陈静' },
-    { account: 'finance2', password: 'fin123456',  label: '财务 - 赵磊' },
-    { account: 'store1',   password: 'store1234',  label: '门店经理 - 周明' },
-    { account: 'store2',   password: 'store1234',  label: '门店经理 - 吴鑫' },
-    { account: 'viewer',   password: 'view1234',   label: '访客(只读)' }
+    { account: 'admin', password: 'hezong123', label: '超级管理员', role: 'admin' },
+    { account: 'coach', password: 'hz123',     label: '音乐教练',   role: 'coach' }
 ];
 
 // ===== Token store (in-memory, survives server restart = all clients re-login) =====
 var tokenStore = {}; // token -> { account, label, createdAt }
+
+// ===== Rate limiter for login =====
+var loginAttempts = {}; // ip -> { count, firstAttempt }
+
+function isRateLimited(ip) {
+    var now = Date.now();
+    var entry = loginAttempts[ip];
+    if (!entry || now - entry.firstAttempt > 60000) {
+        loginAttempts[ip] = { count: 1, firstAttempt: now };
+        return false;
+    }
+    entry.count++;
+    if (entry.count > 5) return true;
+    return false;
+}
+
+// Periodic cleanup of expired tokens and login attempts
+setInterval(function() {
+    var now = Date.now();
+    var expired = [];
+    for (var t in tokenStore) {
+        if (now - tokenStore[t].createdAt > 24 * 60 * 60 * 1000) {
+            expired.push(t);
+        }
+    }
+    expired.forEach(function(t) { delete tokenStore[t]; });
+    // Cleanup old login attempts
+    for (var ip in loginAttempts) {
+        if (now - loginAttempts[ip].firstAttempt > 60000) {
+            delete loginAttempts[ip];
+        }
+    }
+}, 60000);
 
 function generateToken() {
     return crypto.randomBytes(32).toString('hex');
@@ -41,32 +66,39 @@ function authMiddleware(req, res, next) {
     if (authHeader && authHeader.startsWith('Bearer ')) {
         token = authHeader.slice(7);
     }
-    if (!token) {
-        token = req.query.token || '';
-    }
     if (!token || !tokenStore[token]) {
         return res.status(401).json({ ok: false, error: '未登录或登录已过期' });
+    }
+    // Check token expiry
+    if (tokenStore[token].createdAt && Date.now() - tokenStore[token].createdAt > 24 * 60 * 60 * 1000) {
+        delete tokenStore[token];
+        return res.status(401).json({ ok: false, error: '登录已过期，请重新登录' });
     }
     req.user = tokenStore[token];
     next();
 }
 
 // ===== SSE connections =====
-var sseClients = [];
+var sseClients = {}; // token -> res
 
 function broadcast(eventType, payload) {
     var data = JSON.stringify(payload);
-    sseClients.forEach(function(client) {
+    for (var t in sseClients) {
         try {
-            client.write('event: ' + eventType + '\ndata: ' + data + '\n\n');
+            sseClients[t].write('event: ' + eventType + '\ndata: ' + data + '\n\n');
         } catch(e) {
-            // Client disconnected, will be removed on close
+            delete sseClients[t];
         }
-    });
+    }
 }
 
 // ===== Login =====
 app.post('/api/login', function(req, res) {
+    var ip = req.ip || req.socket.remoteAddress || 'unknown';
+    if (isRateLimited(ip)) {
+        return res.status(429).json({ ok: false, error: '尝试次数过多，请1分钟后再试' });
+    }
+
     var account = (req.body.account || '').trim();
     var password = (req.body.password || '');
 
@@ -82,10 +114,13 @@ app.post('/api/login', function(req, res) {
         return res.json({ ok: false, error: '账户或密码错误，请重试' });
     }
 
-    var token = generateToken();
-    tokenStore[token] = { account: found.account, label: found.label, createdAt: Date.now() };
+    // Successful login - clear rate limit
+    delete loginAttempts[ip];
 
-    res.json({ ok: true, user: { account: found.account, label: found.label }, token: token });
+    var token = generateToken();
+    tokenStore[token] = { account: found.account, label: found.label, role: found.role || 'coach', createdAt: Date.now() };
+
+    res.json({ ok: true, user: { account: found.account, label: found.label, role: found.role || 'coach' }, token: token });
 });
 
 app.post('/api/logout', authMiddleware, function(req, res) {
@@ -96,6 +131,14 @@ app.post('/api/logout', authMiddleware, function(req, res) {
     }
     res.json({ ok: true });
 });
+
+// ===== Admin-only middleware =====
+function adminMiddleware(req, res, next) {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ ok: false, error: '仅超级管理员可执行此操作' });
+    }
+    next();
+}
 
 // ===== Data endpoints (all protected) =====
 
@@ -108,7 +151,7 @@ app.get('/api/data/all', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/artists', authMiddleware, function(req, res) {
+app.post('/api/artists', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addArtist(req.body);
         broadcast('artist-added', { id: result.id });
@@ -118,7 +161,7 @@ app.post('/api/artists', authMiddleware, function(req, res) {
     }
 });
 
-app.put('/api/artists/:id', authMiddleware, function(req, res) {
+app.put('/api/artists/:id', authMiddleware, adminMiddleware, function(req, res) {
     try {
         req.body.id = parseInt(req.params.id, 10);
         db.updateArtist(req.body);
@@ -129,7 +172,7 @@ app.put('/api/artists/:id', authMiddleware, function(req, res) {
     }
 });
 
-app.delete('/api/artists/:id', authMiddleware, function(req, res) {
+app.delete('/api/artists/:id', authMiddleware, adminMiddleware, function(req, res) {
     try {
         db.deleteArtist(parseInt(req.params.id, 10));
         broadcast('artist-deleted', { id: parseInt(req.params.id, 10) });
@@ -139,7 +182,7 @@ app.delete('/api/artists/:id', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/contracts', authMiddleware, function(req, res) {
+app.post('/api/contracts', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addContract(req.body);
         broadcast('contract-added', { id: result.id });
@@ -149,7 +192,7 @@ app.post('/api/contracts', authMiddleware, function(req, res) {
     }
 });
 
-app.put('/api/contracts/:id', authMiddleware, function(req, res) {
+app.put('/api/contracts/:id', authMiddleware, adminMiddleware, function(req, res) {
     try {
         req.body.id = parseInt(req.params.id, 10);
         db.updateContract(req.body);
@@ -160,7 +203,21 @@ app.put('/api/contracts/:id', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/salaries', authMiddleware, function(req, res) {
+app.get('/api/contracts/:id/file', authMiddleware, function(req, res) {
+    try {
+        var contracts = db.getAllData().contracts;
+        var contract = contracts.find(function(c) { return c.id === parseInt(req.params.id, 10); });
+        if (!contract || !contract.contractFile) {
+            return res.json({ ok: false, error: '未找到合约文件' });
+        }
+        var base64 = db.getContractFileBase64(contract.contractFile);
+        res.json({ ok: true, data: base64 });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.post('/api/salaries', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addSalaries(req.body);
         broadcast('salaries-added', { count: result.count });
@@ -170,7 +227,7 @@ app.post('/api/salaries', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/evaluations', authMiddleware, function(req, res) {
+app.post('/api/evaluations', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addEvaluations(req.body);
         broadcast('evaluations-added', { count: result.count });
@@ -180,7 +237,7 @@ app.post('/api/evaluations', authMiddleware, function(req, res) {
     }
 });
 
-app.put('/api/artists/:id/photos', authMiddleware, function(req, res) {
+app.put('/api/artists/:id/photos', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var artistId = parseInt(req.params.id, 10);
         var photosJson = req.body.photos || '[]';
@@ -192,7 +249,7 @@ app.put('/api/artists/:id/photos', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/upload/avatar', authMiddleware, function(req, res) {
+app.post('/api/upload/avatar', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var dataUrl = req.body.dataUrl;
         var artistName = req.body.name;
@@ -207,11 +264,52 @@ app.post('/api/upload/avatar', authMiddleware, function(req, res) {
     }
 });
 
-app.post('/api/reset', authMiddleware, function(req, res) {
+app.post('/api/reset', authMiddleware, adminMiddleware, function(req, res) {
     try {
         db.resetAllData();
         broadcast('data-reset', {});
         res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+// ===== 音乐部文件公告 =====
+
+app.get('/api/announcements', authMiddleware, function(req, res) {
+    try {
+        var data = db.getAllData();
+        res.json({ ok: true, data: data.announcements || [] });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.post('/api/announcements', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var result = db.addAnnouncement(req.body);
+        broadcast('announcement-added', { id: result.id });
+        res.json({ ok: true, data: result });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.delete('/api/announcements/:id', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.deleteAnnouncement(parseInt(req.params.id, 10));
+        broadcast('announcement-deleted', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.get('/api/announcements/:id/file', authMiddleware, function(req, res) {
+    try {
+        var base64 = db.getAnnouncementFileBase64(parseInt(req.params.id, 10));
+        if (!base64) return res.json({ ok: false, error: '未找到文件' });
+        res.json({ ok: true, data: base64 });
     } catch(err) {
         res.json({ ok: false, error: err.message });
     }
@@ -233,6 +331,12 @@ app.get('/api/events', function(req, res) {
         return res.status(401).json({ ok: false, error: '未登录' });
     }
 
+    // Close old SSE connection for this token if it exists
+    if (sseClients[token]) {
+        try { sseClients[token].end(); } catch(e) {}
+        delete sseClients[token];
+    }
+
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -240,14 +344,15 @@ app.get('/api/events', function(req, res) {
         'X-Accel-Buffering': 'no'
     });
 
-    sseClients.push(res);
+    sseClients[token] = res;
 
     // Send initial keepalive
     res.write(':ok\n\n');
 
     req.on('close', function() {
-        var idx = sseClients.indexOf(res);
-        if (idx !== -1) sseClients.splice(idx, 1);
+        if (sseClients[token] === res) {
+            delete sseClients[token];
+        }
     });
 });
 

@@ -1,10 +1,82 @@
 {
-  "name": "artist-manager-server",
+  "name": "artist-manager",
   "version": "1.0.0",
-  "private": true,
+  "description": "艺人管理系统",
+  "author": "Artist Manager Team",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "prebuild": "node -e \"['better-sqlite3','express','cors'].forEach(function(m){var p='node_modules/'+m;if(require('fs').existsSync(p))require('fs').rmSync(p,{recursive:true})})\"",
+    "postbuild": "npm install",
+    "build": "electron-builder --win",
+    "export-share": "node export-share.js",
+    "copy:www": "node scripts/copy-www.js",
+    "cap:sync": "npm run copy:www && npx cap sync",
+    "cap:open": "npx cap open android",
+    "cap:build": "npm run copy:www && npx cap sync && cd android && gradlew assembleDebug",
+    "cap:build:release": "npm run copy:www && npx cap sync && cd android && gradlew assembleRelease",
+    "cap:run": "npm run copy:www && npx cap sync && npx cap run android"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3",
+    "playwright": "^1.59.1",
+    "ssh2": "^1.17.0"
+  },
   "dependencies": {
-    "better-sqlite3": "^12.9.0",
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "^8.3.4",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
+    "@fortawesome/fontawesome-free": "^6.5.0",
+    "bootstrap": "^5.1.3",
+    "bootstrap-icons": "^1.8.1",
+    "chart.js": "^4.4.0",
+    "sql.js": "^1.10.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",
     "express": "^5.2.1"
+  },
+  "build": {
+    "appId": "com.artist.manager",
+    "productName": "艺人管理系统",
+    "directories": {
+      "output": "dist4"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "艺人管理系统",
+      "artifactName": "artist-manager-setup.${ext}"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "db/**/*",
+      "src/**/*",
+      "build/**/*",
+      "node_modules/**/*",
+      "!db/**/*.db",
+      "!db/**/*.db-shm",
+      "!db/**/*.db-wal",
+      "!node_modules/.cache",
+      "!node_modules/**/node_modules"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sql.js/dist/sql-wasm.wasm"
+    ]
   }
 }
