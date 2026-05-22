@@ -15,6 +15,7 @@ var CapDB = (function() {
     db.run("CREATE TABLE IF NOT EXISTS stores (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)");
     db.run("CREATE TABLE IF NOT EXISTS artists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, avatar TEXT DEFAULT '', gender TEXT DEFAULT '', store_id INTEGER, store_name TEXT DEFAULT '', positions TEXT DEFAULT '[]', business_level TEXT DEFAULT 'C级', sign_status TEXT DEFAULT '未签约', daily_salary REAL DEFAULT 0, status TEXT DEFAULT '在岗', id_card TEXT DEFAULT '', phone TEXT DEFAULT '', photos TEXT DEFAULT '[]', created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')))");
     try { db.run("ALTER TABLE artists ADD COLUMN photos TEXT DEFAULT '[]'"); } catch(_) {}
+    try { db.run("ALTER TABLE artists ADD COLUMN videos TEXT DEFAULT '[]'"); } catch(_) {}
     db.run("CREATE TABLE IF NOT EXISTS contracts (id INTEGER PRIMARY KEY AUTOINCREMENT, artist_id INTEGER NOT NULL, artist_name TEXT DEFAULT '', positions TEXT DEFAULT '[]', brand TEXT DEFAULT '', gender TEXT DEFAULT '', id_card TEXT DEFAULT '', phone TEXT DEFAULT '', start_date TEXT DEFAULT '', end_date TEXT DEFAULT '', contract_no TEXT DEFAULT '', sign_status TEXT DEFAULT '未签约', contract_file TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now','localtime')))");
     try { db.run("ALTER TABLE contracts ADD COLUMN contract_file TEXT DEFAULT ''"); } catch(_) {}
     db.run("CREATE TABLE IF NOT EXISTS evaluations (id INTEGER PRIMARY KEY AUTOINCREMENT, artist_id INTEGER NOT NULL, artist_name TEXT DEFAULT '', store_name TEXT DEFAULT '', overall_score REAL DEFAULT 0, responsibility_score REAL DEFAULT 0, stability_score REAL DEFAULT 0, teamwork_score REAL DEFAULT 0, adaptability_score REAL DEFAULT 0, business_score REAL DEFAULT 0, tags TEXT DEFAULT '[]', comment TEXT DEFAULT '', evaluated_at TEXT DEFAULT (datetime('now','localtime')))");
@@ -179,7 +180,8 @@ var CapDB = (function() {
       gender: row.gender || '',
       idNumber: row.id_card || '',
       phone: row.phone || '',
-      photos: row.photos || '[]'
+      photos: row.photos || '[]',
+      videos: row.videos || '[]'
     };
   }
 
@@ -397,6 +399,46 @@ var CapDB = (function() {
     return { ok: true };
   }
 
+  function saveArtistVideos(artistId, videosJson) {
+    query("UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?", [videosJson, artistId]);
+    return { ok: true };
+  }
+
+  function saveArtistVideo(artistId, dataUrl, fileName) {
+    var matches = dataUrl.match(/^data:video\/(\w+);base64,(.+)$/);
+    if (!matches) throw new Error('无效的视频格式');
+    var ext = matches[1];
+    if (ext === 'quicktime') ext = 'mov';
+    var videoId = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+    var rows = query('SELECT videos FROM artists WHERE id = ?', [artistId]);
+    if (!rows || rows.length === 0) throw new Error('艺人不存在');
+    var videos = [];
+    try { videos = JSON.parse(rows[0].videos || '[]'); } catch(_) {}
+    // Capacitor mobile: store base64 dataUrl inline (no file system)
+    var base64Data = matches[2];
+    videos.push({
+      id: videoId,
+      fileName: fileName,
+      serverPath: '',
+      localPath: dataUrl,
+      size: Math.round(base64Data.length * 3 / 4),
+      mimeType: 'video/' + ext,
+      uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    });
+    query("UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?", [JSON.stringify(videos), artistId]);
+    return { ok: true, path: dataUrl };
+  }
+
+  function deleteArtistVideo(artistId, videoId) {
+    var rows = query('SELECT videos FROM artists WHERE id = ?', [artistId]);
+    if (!rows || rows.length === 0) return { ok: true };
+    var videos = [];
+    try { videos = JSON.parse(rows[0].videos || '[]'); } catch(_) {}
+    var remaining = videos.filter(function(v) { return v.id !== videoId; });
+    query("UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?", [JSON.stringify(remaining), artistId]);
+    return { ok: true };
+  }
+
   function saveAvatar(dataUrl, artistName) {
     // 直接返回 dataUrl，存入数据库 avatar 字段，无需写文件
     return dataUrl;
@@ -446,6 +488,9 @@ var CapDB = (function() {
     addSalaries: addSalaries,
     addEvaluations: addEvaluations,
     saveArtistPhotos: saveArtistPhotos,
+    saveArtistVideos: saveArtistVideos,
+    saveArtistVideo: saveArtistVideo,
+    deleteArtistVideo: deleteArtistVideo,
     saveAvatar: saveAvatar,
     resetAllData: resetAllData,
     addAnnouncement: addAnnouncement,

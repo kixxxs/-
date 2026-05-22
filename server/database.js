@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 var DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'db', 'db', 'artist_data.db');
 
@@ -24,6 +25,7 @@ function createTables() {
   db.exec("CREATE TABLE IF NOT EXISTS stores (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL UNIQUE\n  )");
   db.exec("CREATE TABLE IF NOT EXISTS artists (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    avatar TEXT DEFAULT '',\n    gender TEXT DEFAULT '',\n    store_id INTEGER,\n    store_name TEXT DEFAULT '',\n    positions TEXT DEFAULT '[]',\n    business_level TEXT DEFAULT 'C级',\n    sign_status TEXT DEFAULT '未签约',\n    daily_salary REAL DEFAULT 0,\n    status TEXT DEFAULT '在岗',\n    id_card TEXT DEFAULT '',\n    phone TEXT DEFAULT '',\n    photos TEXT DEFAULT '[]',\n    created_at TEXT DEFAULT (datetime('now','localtime')),\n    updated_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
   try { db.exec("ALTER TABLE artists ADD COLUMN photos TEXT DEFAULT '[]'"); } catch(_) {}
+  try { db.exec("ALTER TABLE artists ADD COLUMN videos TEXT DEFAULT '[]'"); } catch(_) {}
   db.exec("CREATE TABLE IF NOT EXISTS contracts (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    artist_id INTEGER NOT NULL,\n    artist_name TEXT DEFAULT '',\n    positions TEXT DEFAULT '[]',\n    brand TEXT DEFAULT '',\n    gender TEXT DEFAULT '',\n    id_card TEXT DEFAULT '',\n    phone TEXT DEFAULT '',\n    start_date TEXT DEFAULT '',\n    end_date TEXT DEFAULT '',\n    contract_no TEXT DEFAULT '',\n    sign_status TEXT DEFAULT '未签约',\n    contract_file TEXT DEFAULT '',\n    created_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
   try { db.exec("ALTER TABLE contracts ADD COLUMN contract_file TEXT DEFAULT ''"); } catch(_) {}
   db.exec("CREATE TABLE IF NOT EXISTS evaluations (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    artist_id INTEGER NOT NULL,\n    artist_name TEXT DEFAULT '',\n    store_name TEXT DEFAULT '',\n    overall_score REAL DEFAULT 0,\n    responsibility_score REAL DEFAULT 0,\n    stability_score REAL DEFAULT 0,\n    teamwork_score REAL DEFAULT 0,\n    adaptability_score REAL DEFAULT 0,\n    business_score REAL DEFAULT 0,\n    tags TEXT DEFAULT '[]',\n    comment TEXT DEFAULT '',\n    evaluated_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
@@ -308,6 +310,7 @@ function mapArtist(a) {
     id: a.id, name: a.name,
     avatar: a.avatar || 'https://picsum.photos/id/' + (a.id + 10) + '/40/40',
     photos: a.photos || '[]',
+    videos: a.videos || '[]',
     status: a.status || '在岗', level: a.business_level || 'B级',
     store: a.store_name || '',
     position: a.positions ? JSON.parse(a.positions).join(', ') : '',
@@ -353,6 +356,70 @@ function mapSalary(s) {
   };
 }
 
+function saveArtistVideo(artistId, dataUrl, fileName) {
+  var matches = dataUrl.match(/^data:video\/(\w+);base64,(.+)$/);
+  if (!matches) throw new Error('无效的视频格式');
+  var ext = matches[1];
+  if (ext === 'quicktime') ext = 'mov';
+  var buffer = Buffer.from(matches[2], 'base64');
+  var videoDir = path.join(__dirname, 'src', 'assets', 'videos');
+  if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
+  var videoId = 'v_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+  var safeName = videoId + '.' + ext;
+  fs.writeFileSync(path.join(videoDir, safeName), buffer);
+  var relativePath = 'assets/videos/' + safeName;
+  var row = db.prepare('SELECT videos FROM artists WHERE id = ?').get(artistId);
+  if (!row) throw new Error('艺人不存在');
+  var videos = [];
+  try { videos = JSON.parse(row.videos || '[]'); } catch(_) {}
+  videos.push({
+    id: videoId,
+    fileName: fileName,
+    serverPath: relativePath,
+    size: buffer.length,
+    mimeType: 'video/' + ext,
+    uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+  });
+  db.prepare("UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?")
+    .run(JSON.stringify(videos), artistId);
+  return relativePath;
+}
+
+function saveArtistVideos(artistId, videosJson) {
+  db.prepare("UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?")
+    .run(videosJson || '[]', artistId);
+}
+
+function deleteArtistVideo(artistId, videoId) {
+  var row = db.prepare('SELECT videos FROM artists WHERE id = ?').get(artistId);
+  if (!row) return;
+  var videos = [];
+  try { videos = JSON.parse(row.videos || '[]'); } catch(_) {}
+  var remaining = [];
+  var deleted = null;
+  for (var i = 0; i < videos.length; i++) {
+    if (videos[i].id === videoId) { deleted = videos[i]; }
+    else { remaining.push(videos[i]); }
+  }
+  if (deleted && deleted.serverPath) {
+    var fullPath = path.join(__dirname, 'src', deleted.serverPath);
+    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  }
+  db.prepare("UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?")
+    .run(JSON.stringify(remaining), artistId);
+}
+
+function getVideoStreamInfo(artistId, videoId) {
+  var row = db.prepare('SELECT videos FROM artists WHERE id = ?').get(artistId);
+  if (!row) return null;
+  var videos = [];
+  try { videos = JSON.parse(row.videos || '[]'); } catch(_) {}
+  for (var i = 0; i < videos.length; i++) {
+    if (videos[i].id === videoId) return videos[i];
+  }
+  return null;
+}
+
 module.exports = {
   init,
   getAllData,
@@ -361,5 +428,6 @@ module.exports = {
   addSalaries, addEvaluations,
   saveArtistPhotos, saveAvatar,
   resetAllData,
-  addAnnouncement, deleteAnnouncement, getAnnouncementFileBase64
+  addAnnouncement, deleteAnnouncement, getAnnouncementFileBase64,
+  saveArtistVideo, saveArtistVideos, deleteArtistVideo, getVideoStreamInfo
 };

@@ -1,9 +1,31 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const Database = require('./db/db/database.js');
 
 let mainWindow;
+
+// Get writable assets directory (userData when packaged, __dirname/src in dev)
+function getAssetsDir() {
+  if (app.isPackaged) {
+    var dir = path.join(app.getPath('userData'), 'assets');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  return path.join(__dirname, 'src', 'assets');
+}
+
+// Resolve asset path for reading: check userData first, then asar
+function resolveAssetPath(subPath) {
+  if (app.isPackaged) {
+    var userPath = path.join(app.getPath('userData'), subPath);
+    if (fs.existsSync(userPath)) return userPath;
+    var asarPath = path.join(__dirname, 'src', subPath);
+    return asarPath;
+  }
+  return path.join(__dirname, 'src', subPath);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -25,8 +47,59 @@ function createWindow() {
   mainWindow.maximize();
 }
 
+// Register custom protocol as privileged (must be before app.ready)
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app-file', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } }
+]);
+
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+
+  // Register custom protocol for serving local assets (videos, etc.) with Range support
+  protocol.handle('app-file', function(request) {
+    try {
+      var relativePath = request.url.replace('app-file://', '');
+      var filePath = resolveAssetPath(relativePath);
+      if (!fs.existsSync(filePath)) {
+        return new Response('Not Found', { status: 404, headers: { 'content-type': 'text/plain' } });
+      }
+      var stat = fs.statSync(filePath);
+      var fileSize = stat.size;
+      var ext = path.extname(filePath).toLowerCase();
+      var mimeMap = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska' };
+      var mimeType = mimeMap[ext] || 'video/mp4';
+
+      var rangeHeader = request.headers.get('range');
+      if (rangeHeader) {
+        var parts = rangeHeader.replace(/bytes=/, '').split('-');
+        var start = parseInt(parts[0], 10) || 0;
+        var end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 10 * 1024 * 1024 - 1, fileSize - 1);
+        var chunkSize = end - start + 1;
+        var buf = Buffer.alloc(chunkSize);
+        var fd = fs.openSync(filePath, 'r');
+        fs.readSync(fd, buf, 0, chunkSize, start);
+        fs.closeSync(fd);
+        return new Response(buf, {
+          status: 206,
+          headers: {
+            'Content-Range': 'bytes ' + start + '-' + end + '/' + fileSize,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(chunkSize),
+            'Content-Type': mimeType
+          }
+        });
+      }
+      // No Range header: read full file (small files only; video tags send Range headers)
+      var fullBuf = fs.readFileSync(filePath);
+      return new Response(fullBuf, {
+        status: 200,
+        headers: { 'Content-Length': String(fileSize), 'Content-Type': mimeType, 'Accept-Ranges': 'bytes' }
+      });
+    } catch(err) {
+      return new Response('Internal Error', { status: 500, headers: { 'content-type': 'text/plain' } });
+    }
+  });
+
   createWindow();
   await Database.init();
 });
@@ -61,7 +134,7 @@ ipcMain.handle('save-contract-file', async (event, dataUrl, contractId) => {
     const matches = dataUrl.match(/^data:application\/pdf;base64,(.+)$/);
     if (!matches) return { ok: false, error: '无效的PDF格式' };
     const buffer = Buffer.from(matches[1], 'base64');
-    const pdfDir = path.join(__dirname, 'src', 'assets', 'contracts');
+    const pdfDir = path.join(getAssetsDir(), 'contracts');
     if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
     const fileName = `contract_${contractId}_${Date.now()}.pdf`;
     fs.writeFileSync(path.join(pdfDir, fileName), buffer);
@@ -73,7 +146,7 @@ ipcMain.handle('save-contract-file', async (event, dataUrl, contractId) => {
 
 ipcMain.handle('read-contract-file', async (event, filePath) => {
   try {
-    const fullPath = path.join(__dirname, 'src', filePath);
+    const fullPath = resolveAssetPath(filePath);
     if (!fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
     const buffer = fs.readFileSync(fullPath);
     const base64 = buffer.toString('base64');
@@ -89,7 +162,7 @@ ipcMain.handle('save-avatar', async (event, dataUrl, artistName) => {
     if (!matches) return { ok: false, error: '无效的图片格式' };
     const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
     const buffer = Buffer.from(matches[2], 'base64');
-    const avatarDir = path.join(__dirname, 'src', 'assets', 'avatars');
+    const avatarDir = path.join(getAssetsDir(), 'avatars');
     if (!fs.existsSync(avatarDir)) fs.mkdirSync(avatarDir, { recursive: true });
     const fileName = `${artistName}_${Date.now()}.${ext}`;
     fs.writeFileSync(path.join(avatarDir, fileName), buffer);
@@ -173,6 +246,7 @@ ipcMain.handle('get-init-data', () => {
             name: a.name,
             avatar: a.avatar || 'https://picsum.photos/id/' + (a.id + 10) + '/40/40',
             photos: a.photos || '[]',
+            videos: a.videos || '[]',
             status: a.status || '在岗',
             level: a.business_level || 'B级',
             store: a.store_name || '',
@@ -295,7 +369,7 @@ ipcMain.handle('add-contract', (event, data) => {
       var matches = contractFile.match(/^data:application\/pdf;base64,(.+)$/);
       if (matches) {
         var buffer = Buffer.from(matches[1], 'base64');
-        var pdfDir = path.join(__dirname, 'src', 'assets', 'contracts');
+        var pdfDir = path.join(getAssetsDir(), 'contracts');
         if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
         var fileName = 'contract_new_' + Date.now() + '.pdf';
         fs.writeFileSync(path.join(pdfDir, fileName), buffer);
@@ -322,7 +396,7 @@ ipcMain.handle('update-contract', (event, data) => {
       var matches = contractFile.match(/^data:application\/pdf;base64,(.+)$/);
       if (matches) {
         var buffer = Buffer.from(matches[1], 'base64');
-        var pdfDir = path.join(__dirname, 'src', 'assets', 'contracts');
+        var pdfDir = path.join(getAssetsDir(), 'contracts');
         if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
         var fileName = 'contract_' + data.id + '_' + Date.now() + '.pdf';
         fs.writeFileSync(path.join(pdfDir, fileName), buffer);
@@ -397,6 +471,95 @@ ipcMain.handle('save-artist-photos', (event, artistId, photosJson) => {
   }
 });
 
+// ===== 视频管理 =====
+
+ipcMain.handle('copy-video-file', async (event, artistId, filePath, fileName) => {
+  try {
+    var ext = path.extname(filePath).toLowerCase().replace('.', '');
+    if (ext === 'quicktime') ext = 'mov';
+    var videoDir = path.join(getAssetsDir(), 'videos');
+    if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
+    var videoId = 'v_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+    var safeName = videoId + '.' + ext;
+    var destPath = path.join(videoDir, safeName);
+    fs.copyFileSync(filePath, destPath);
+    var stat = fs.statSync(destPath);
+    var relativePath = 'assets/videos/' + safeName;
+
+    // Update artist's videos JSON column
+    var rows = Database.query('SELECT videos FROM artists WHERE id = ?', [artistId]);
+    if (!rows || rows.length === 0) return { ok: false, error: '艺人不存在' };
+    var videos = [];
+    try { videos = JSON.parse(rows[0].videos || '[]'); } catch(_) {}
+    videos.push({
+      id: videoId,
+      fileName: fileName,
+      serverPath: relativePath,
+      size: stat.size,
+      mimeType: 'video/' + ext,
+      uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    });
+    Database.query(
+      "UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?",
+      [JSON.stringify(videos), artistId]
+    );
+    return { ok: true, path: relativePath, videoId: videoId };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('read-video-file', async (event, filePath) => {
+  try {
+    var fullPath = resolveAssetPath(filePath);
+    if (!fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
+    var buffer = fs.readFileSync(fullPath);
+    var ext = path.extname(fullPath).replace('.', '');
+    if (ext === 'mov') ext = 'quicktime';
+    var base64 = buffer.toString('base64');
+    return { ok: true, data: 'data:video/' + ext + ';base64,' + base64 };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('delete-artist-video', async (event, artistId, videoId) => {
+  try {
+    var rows = Database.query('SELECT videos FROM artists WHERE id = ?', [artistId]);
+    if (!rows || rows.length === 0) return { ok: false, error: '艺人不存在' };
+    var videos = [];
+    try { videos = JSON.parse(rows[0].videos || '[]'); } catch(_) {}
+    var target = null;
+    for (var i = 0; i < videos.length; i++) {
+      if (videos[i].id === videoId) { target = videos[i]; videos.splice(i, 1); break; }
+    }
+    // Delete physical file
+    if (target && target.serverPath) {
+      var fullPath = resolveAssetPath(target.serverPath);
+      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    }
+    Database.query(
+      "UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?",
+      [JSON.stringify(videos), artistId]
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('save-artist-videos', async (event, artistId, videosJson) => {
+  try {
+    Database.query(
+      "UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?",
+      [videosJson || '[]', artistId]
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('reset-all-data', () => {
   try {
     Database.query('DELETE FROM salaries');
@@ -436,11 +599,12 @@ ipcMain.handle('add-announcement', async (event, data) => {
       var matches = data.fileData.match(/^data:application\/pdf;base64,(.+)$/);
       if (matches) {
         var buffer = Buffer.from(matches[1], 'base64');
-        var pdfDir = path.join(__dirname, 'src', 'assets', 'announcements');
+        var pdfDir = path.join(getAssetsDir(), 'announcements');
         if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
         var safeName = (data.fileName || 'file.pdf').replace(/[^a-zA-Z0-9_\-.一-龥]/g, '_');
-        filePath = 'assets/announcements/' + Date.now() + '_' + safeName;
-        fs.writeFileSync(path.join(__dirname, 'src', filePath), buffer);
+        var announceFileName = Date.now() + '_' + safeName;
+        filePath = 'assets/announcements/' + announceFileName;
+        fs.writeFileSync(path.join(getAssetsDir(), 'announcements', announceFileName), buffer);
       }
     }
     var result = Database.query(
@@ -457,7 +621,7 @@ ipcMain.handle('delete-announcement', async (event, id) => {
   try {
     var rows = Database.query('SELECT file_path FROM announcements WHERE id = ?', [id]);
     if (rows && rows.length > 0 && rows[0].file_path) {
-      var fullPath = path.join(__dirname, 'src', rows[0].file_path);
+      var fullPath = resolveAssetPath(rows[0].file_path);
       if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
     }
     Database.query('DELETE FROM announcements WHERE id = ?', [id]);
@@ -469,7 +633,7 @@ ipcMain.handle('delete-announcement', async (event, id) => {
 
 ipcMain.handle('read-announcement-file', async (event, filePath) => {
   try {
-    var fullPath = path.join(__dirname, 'src', filePath);
+    var fullPath = resolveAssetPath(filePath);
     if (!fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
     var buffer = fs.readFileSync(fullPath);
     var base64 = buffer.toString('base64');

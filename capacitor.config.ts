@@ -4,6 +4,9 @@ const config: CapacitorConfig = {
   appId: 'com.artist.manager',
   appName: '艺人管理系统',
   webDir: 'www',
+  server: {
+    androidScheme: 'http',
+  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,

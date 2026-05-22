@@ -2118,7 +2118,37 @@
                     <div style="color:#aaa;padding:20px;">暂无形象照</div>
                 </div>
             </div>
+
+            <!-- 视频区域 -->
+            <div style="padding:0 20px 20px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                    <h4 style="margin:0;">相关视频</h4>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span id="uploadVideoProgress" style="font-size:12px;color:var(--primary-color);display:none;">0%</span>
+                        <button type="button" id="uploadVideoBtn" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('detailVideoInput').click();">
+                            <i class="fas fa-video me-1"></i>上传视频
+                        </button>
+                    </div>
+                    <input type="file" id="detailVideoInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo" style="display:none;" onchange="uploadArtistVideo(event)">
+                </div>
+                <div id="uploadVideoProgressBar" style="display:none;height:4px;background:var(--border-color);border-radius:2px;margin-bottom:8px;overflow:hidden;">
+                    <div id="uploadVideoProgressBarInner" style="height:100%;background:var(--primary-color);width:0%;transition:width 0.2s;"></div>
+                </div>
+                <small class="text-muted">支持 MP4、WebM、MOV 格式，单文件不超过 200MB</small>
+                <div id="videoGallery" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;min-height:60px;">
+                    <div style="color:var(--text-muted);padding:20px;">暂无视频</div>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <!-- 视频播放器 -->
+    <div id="videoPlayerModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;align-items:center;justify-content:center;flex-direction:column;" onclick="closeVideoPlayer()">
+        <span style="position:absolute;top:20px;right:30px;color:#fff;font-size:40px;cursor:pointer;z-index:10;">&times;</span>
+        <video id="videoPlayer" controls playsinline style="max-width:95%;max-height:80%;" onclick="event.stopPropagation();">
+            您的浏览器不支持视频播放
+        </video>
+        
     </div>
 
     <!-- 图片查看器（灯箱） -->
@@ -2692,6 +2722,26 @@
             async readAnnouncementFile(id) {
                 var result = await this._fetch('/api/announcements/' + id + '/file');
                 return result.ok ? result.data : null;
+            },
+
+            async uploadVideo(artistId, dataUrl, fileName) {
+                return this._fetch('/api/artists/' + artistId + '/videos/upload', {
+                    method: 'POST',
+                    body: JSON.stringify({ dataUrl: dataUrl, fileName: fileName })
+                });
+            },
+
+            async deleteVideo(artistId, videoId) {
+                return this._fetch('/api/artists/' + artistId + '/videos/' + videoId, {
+                    method: 'DELETE'
+                });
+            },
+
+            async saveArtistVideos(artistId, videosJson) {
+                return this._fetch('/api/artists/' + artistId + '/videos', {
+                    method: 'PUT',
+                    body: JSON.stringify({ videos: videosJson })
+                });
             }
         };
 
@@ -3060,6 +3110,82 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
 
+            async uploadVideo(artistId, dataUrlOrFilePath, fileName) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.uploadVideo(artistId, dataUrlOrFilePath, fileName); }
+                    catch(e) { console.warn('[DBStorage] Server uploadVideo failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try {
+                        var srvUrl = localStorage.getItem('v2_server_url') || '';
+                        if (srvUrl) {
+                            ServerStorage.init(srvUrl, sessionStorage.getItem('v2_login_token') || '');
+                            return await ServerStorage.uploadVideo(artistId, dataUrlOrFilePath, fileName);
+                        }
+                        return CapDB.saveArtistVideo(artistId, dataUrlOrFilePath, fileName);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) return { ok: false, error: '内存模式不支持视频上传' };
+                // Electron mode: filePath is a local file path, copy via IPC
+                if (window.electronAPI && window.electronAPI.copyVideoFile) {
+                    try {
+                        return await window.electronAPI.copyVideoFile(artistId, dataUrlOrFilePath, fileName);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async deleteVideo(artistId, videoId) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.deleteVideo(artistId, videoId); }
+                    catch(e) { console.warn('[DBStorage] Server deleteVideo failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try {
+                        var srvUrl2 = localStorage.getItem('v2_server_url') || '';
+                        if (srvUrl2) {
+                            ServerStorage.init(srvUrl2, sessionStorage.getItem('v2_login_token') || '');
+                            return await ServerStorage.deleteVideo(artistId, videoId);
+                        }
+                        return CapDB.deleteArtistVideo(artistId, videoId);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) return { ok: true };
+                if (window.electronAPI && window.electronAPI.deleteArtistVideo) {
+                    try {
+                        return await window.electronAPI.deleteArtistVideo(artistId, videoId);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async saveArtistVideos(artistId, videosJson) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.saveArtistVideos(artistId, videosJson); }
+                    catch(e) { console.warn('[DBStorage] Server saveArtistVideos failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try {
+                        var srvUrl3 = localStorage.getItem('v2_server_url') || '';
+                        if (srvUrl3) {
+                            ServerStorage.init(srvUrl3, sessionStorage.getItem('v2_login_token') || '');
+                            return await ServerStorage.saveArtistVideos(artistId, videosJson);
+                        }
+                        return CapDB.saveArtistVideos(artistId, videosJson);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) return { ok: true };
+                if (window.electronAPI && window.electronAPI.saveArtistVideos) {
+                    try {
+                        return await window.electronAPI.saveArtistVideos(artistId, videosJson);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
             async getAnnouncements() {
                 if (this._serverMode) {
                     try { return await ServerStorage.getAnnouncements(); }
@@ -3182,7 +3308,7 @@
             var eventTypes = ['artist-added', 'artist-updated', 'artist-deleted',
                               'contract-added', 'contract-updated',
                               'salaries-added', 'evaluations-added',
-                              'photos-updated', 'avatar-updated',
+                              'photos-updated', 'avatar-updated', 'videos-updated',
                               'announcement-added', 'announcement-deleted', 'data-reset'];
 
             eventTypes.forEach(function(type) {
@@ -6587,6 +6713,8 @@
         var _currentDetailArtist = null;
         var _currentPhotos = [];
         var _currentPhotoIndex = 0;
+        var _currentVideos = [];
+        var _currentVideoIndex = 0;
 
         function openArtistDetail(id) {
             var artist = null;
@@ -6672,6 +6800,18 @@
             } catch(e) { _currentPhotos = []; }
             _currentPhotoIndex = 0;
             renderPhotoGallery();
+
+            // 加载视频
+            _currentVideos = [];
+            try {
+                if (artist.videos && typeof artist.videos === 'string') {
+                    _currentVideos = JSON.parse(artist.videos);
+                } else if (Array.isArray(artist.videos)) {
+                    _currentVideos = artist.videos;
+                }
+            } catch(e) { _currentVideos = []; }
+            _currentVideoIndex = 0;
+            renderVideoGallery();
 
             document.getElementById('artistDetailModal').style.display = 'block';
         }
@@ -6760,6 +6900,360 @@
             for (var i = 0; i < appData.artists.length; i++) {
                 if (appData.artists[i].id === artistId) {
                     appData.artists[i].photos = photosJson;
+                    break;
+                }
+            }
+        }
+
+        // ===== 视频管理 =====
+
+        function formatFileSize(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            var units = ['B', 'KB', 'MB', 'GB'];
+            var i = Math.floor(Math.log(bytes) / Math.log(1024));
+            i = Math.min(i, units.length - 1);
+            return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+        }
+
+        function getVideoStreamUrl(video) {
+            if (!video || !video.serverPath) return '';
+            // Server mode (including Electron connected to server): streaming URL from cloud
+            var srvUrl = localStorage.getItem('v2_server_url') || '';
+            if (srvUrl) {
+                return srvUrl.replace(/\/+$/, '') + '/api/videos/stream/' + (_currentDetailArtist ? _currentDetailArtist.id : 0) + '/' + encodeURIComponent(video.id);
+            }
+            // Electron local mode: use app-file:// custom protocol
+            if (window.electronAPI && window.electronAPI.isDesktop) {
+                return 'app-file://' + video.serverPath;
+            }
+            // Capacitor local file
+            if (_useCapacitorStore && video.localPath) return video.localPath;
+            return '';
+        }
+
+        function renderVideoGallery() {
+            var gallery = document.getElementById('videoGallery');
+            if (!_currentVideos || _currentVideos.length === 0) {
+                gallery.innerHTML = '<div style="color:var(--text-muted);padding:20px;">暂无视频</div>';
+                return;
+            }
+            gallery.innerHTML = '';
+            _currentVideos.forEach(function(video, idx) {
+                var card = document.createElement('div');
+                card.style.cssText = 'width:160px;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;cursor:pointer;transition:box-shadow 0.2s;';
+                card.onmouseenter = function() { card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'; };
+                card.onmouseleave = function() { card.style.boxShadow = 'none'; };
+                var sizeStr = formatFileSize(video.size || 0);
+                card.innerHTML =
+                    '<div style="height:100px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;">' +
+                        '<i class="fas fa-play-circle" style="font-size:36px;color:var(--primary-color);"></i>' +
+                    '</div>' +
+                    '<div style="padding:8px;">' +
+                        '<div style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(video.fileName || '') + '">' + escapeHtml(video.fileName || '视频') + '</div>' +
+                        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + sizeStr + '</div>' +
+                        '<div style="margin-top:6px;display:flex;gap:6px;">' +
+                            '<button class="btn btn-sm btn-outline-primary" style="flex:1;font-size:11px;padding:2px 6px;" onclick="event.stopPropagation();playVideo(' + idx + ')"><i class="fas fa-play"></i> 播放</button>' +
+                            '<button class="btn btn-sm btn-outline-success" style="font-size:11px;padding:2px 6px;" title="下载" onclick="event.stopPropagation();downloadVideo(' + idx + ')"><i class="fas fa-download"></i></button>' +
+                            '<button class="btn btn-sm btn-outline-danger" style="font-size:11px;padding:2px 6px;" onclick="event.stopPropagation();deleteVideo(\'' + escapeHtml(video.id) + '\')"><i class="fas fa-trash"></i></button>' +
+                        '</div>' +
+                    '</div>';
+                card.addEventListener('click', function() { playVideo(idx); });
+                gallery.appendChild(card);
+            });
+        }
+
+        function playVideo(index) {
+            if (!_currentVideos || index < 0 || index >= _currentVideos.length) return;
+            var video = _currentVideos[index];
+            _currentVideoIndex = index;
+
+            var playerEl = document.getElementById('videoPlayer');
+            var modal = document.getElementById('videoPlayerModal');
+            var streamUrl = getVideoStreamUrl(video);
+            if (!streamUrl) {
+                showToast('无法获取视频播放地址', 'error');
+                return;
+            }
+
+            // Remove old event listeners by cloning
+            var newPlayer = playerEl.cloneNode(false);
+            playerEl.parentNode.replaceChild(newPlayer, playerEl);
+            playerEl = newPlayer;
+            playerEl.id = 'videoPlayer';
+            playerEl.controls = true;
+            playerEl.playsinline = true;
+            playerEl.style.cssText = 'max-width:95%;max-height:80%;';
+            playerEl.setAttribute('playsinline', '');
+            playerEl.setAttribute('controls', '');
+            playerEl.onclick = function(e) { e.stopPropagation(); };
+
+            playerEl.addEventListener('canplay', function() {
+                playerEl.play().catch(function(err) {
+                    showToast('播放失败: ' + err.message, 'error');
+                });
+            }, { once: true });
+
+            playerEl.addEventListener('error', function() {
+                var ve = playerEl.error;
+                showToast('视频加载失败' + (ve ? '(code=' + ve.code + ')' : ''), 'error');
+            });
+
+            playerEl.src = streamUrl;
+            playerEl.load();
+            modal.style.display = 'flex';
+        }
+
+        function closeVideoPlayer() {
+            var modal = document.getElementById('videoPlayerModal');
+            var playerEl = document.getElementById('videoPlayer');
+            playerEl.pause();
+            playerEl.removeAttribute('src');
+            playerEl.load();
+            modal.style.display = 'none';
+        }
+
+        // Close video player with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                var videoModal = document.getElementById('videoPlayerModal');
+                if (videoModal && videoModal.style.display === 'flex') {
+                    closeVideoPlayer();
+                }
+            }
+        });
+
+        async function uploadArtistVideo(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+
+            if (file.size > 200 * 1024 * 1024) {
+                showToast('视频文件不能超过 200MB', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            if (!file.type.startsWith('video/')) {
+                showToast('请选择视频文件', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            var artistId = _currentDetailArtist ? _currentDetailArtist.id : 0;
+            if (!artistId) {
+                showToast('未找到艺人信息', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            // Show progress UI
+            var progressEl = document.getElementById('uploadVideoProgress');
+            var progressBar = document.getElementById('uploadVideoProgressBar');
+            var progressBarInner = document.getElementById('uploadVideoProgressBarInner');
+            var uploadBtn = document.getElementById('uploadVideoBtn');
+            var isElectron = window.electronAPI && window.electronAPI.isDesktop;
+
+            progressEl.style.display = 'inline';
+            progressBar.style.display = 'block';
+            uploadBtn.disabled = true;
+
+            function setProgress(pct, text) {
+                progressEl.textContent = text || (Math.round(pct) + '%');
+                progressBarInner.style.width = Math.round(pct) + '%';
+            }
+
+            function hideProgress() {
+                progressEl.style.display = 'none';
+                progressBar.style.display = 'none';
+                uploadBtn.disabled = false;
+            }
+
+            try {
+                setProgress(0);
+
+                if (isElectron && file.path && !DBStorage._serverMode) {
+                    // Electron local mode: copy file via IPC (file.path is the local filesystem path)
+                    setProgress(30, '复制中...');
+                    console.log('[uploadVideo] Electron local mode, file.path=' + file.path + ', fileName=' + file.name + ', size=' + file.size);
+                    var result = await DBStorage.uploadVideo(artistId, file.path, file.name);
+                    console.log('[uploadVideo] IPC result:', JSON.stringify(result));
+                    if (result.ok) {
+                        setProgress(100, '完成');
+                        await loadData();
+                        for (var i = 0; i < appData.artists.length; i++) {
+                            if (appData.artists[i].id === artistId) {
+                                _currentDetailArtist = appData.artists[i];
+                                try { _currentVideos = JSON.parse(appData.artists[i].videos || '[]'); } catch(e) { _currentVideos = []; }
+                                renderVideoGallery();
+                                break;
+                            }
+                        }
+                        showToast('视频上传成功', 'success');
+                    } else {
+                        console.error('[uploadVideo] IPC failed:', result.error);
+                        showToast('上传失败：' + (result.error || '未知错误'), 'error');
+                    }
+                } else {
+                    // Server/Capacitor: read file as base64, then upload
+                    setProgress(10, '读取中...');
+                    var dataUrl = await new Promise(function(resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function(e) { resolve(e.target.result); };
+                        reader.onerror = function(e) { reject(new Error('文件读取失败')); };
+                        reader.readAsDataURL(file);
+                    });
+
+                    setProgress(30, '上传中...');
+
+                    // For server mode with XHR progress tracking
+                    var srvUrl = localStorage.getItem('v2_server_url') || '';
+                    if (srvUrl) {
+                        var token = sessionStorage.getItem('v2_login_token') || '';
+                        var uploadResult = await new Promise(function(resolve, reject) {
+                            var xhr = new XMLHttpRequest();
+                            xhr.open('POST', srvUrl.replace(/\/+$/, '') + '/api/artists/' + artistId + '/videos/upload');
+                            xhr.setRequestHeader('Content-Type', 'application/json');
+                            if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+                            xhr.upload.onprogress = function(e) {
+                                if (e.lengthComputable) {
+                                    var pct = 30 + (e.loaded / e.total) * 70;
+                                    setProgress(pct);
+                                }
+                            };
+                            xhr.onload = function() {
+                                try {
+                                    var body = JSON.parse(xhr.responseText);
+                                    resolve(body);
+                                } catch(e) { resolve({ ok: false, error: '服务器响应异常' }); }
+                            };
+                            xhr.onerror = function() { resolve({ ok: false, error: '网络连接失败' }); };
+                            xhr.send(JSON.stringify({ dataUrl: dataUrl, fileName: file.name }));
+                        });
+                        var svrResult = uploadResult;
+                        if (svrResult.ok) {
+                            setProgress(100, '完成');
+                            await loadData();
+                            for (var j = 0; j < appData.artists.length; j++) {
+                                if (appData.artists[j].id === artistId) {
+                                    _currentDetailArtist = appData.artists[j];
+                                    try { _currentVideos = JSON.parse(appData.artists[j].videos || '[]'); } catch(e) { _currentVideos = []; }
+                                    renderVideoGallery();
+                                    break;
+                                }
+                            }
+                            showToast('视频上传成功', 'success');
+                        } else {
+                            showToast('上传失败：' + (svrResult.error || '未知错误'), 'error');
+                        }
+                    } else {
+                        // Capacitor no-server mode
+                        var capResult = await DBStorage.uploadVideo(artistId, dataUrl, file.name);
+                        if (capResult.ok) {
+                            setProgress(100, '完成');
+                            await loadData();
+                            for (var k = 0; k < appData.artists.length; k++) {
+                                if (appData.artists[k].id === artistId) {
+                                    _currentDetailArtist = appData.artists[k];
+                                    try { _currentVideos = JSON.parse(appData.artists[k].videos || '[]'); } catch(e) { _currentVideos = []; }
+                                    renderVideoGallery();
+                                    break;
+                                }
+                            }
+                            showToast('视频上传成功', 'success');
+                        } else {
+                            showToast('上传失败：' + (capResult.error || '未知错误'), 'error');
+                        }
+                    }
+                }
+            } catch(err) {
+                console.error('[uploadVideo] Exception:', err.message, err.stack);
+                showToast('上传失败：' + (err.message || '未知错误'), 'error');
+            }
+
+            hideProgress();
+            event.target.value = '';
+        }
+
+        async function downloadVideo(idx) {
+            if (!_currentVideos || idx < 0 || idx >= _currentVideos.length) return;
+            var video = _currentVideos[idx];
+            var streamUrl = getVideoStreamUrl(video);
+            if (!streamUrl) { showToast('无法获取下载地址', 'error'); return; }
+
+            showToast('正在下载视频...', 'info');
+            try {
+                var resp = await fetch(streamUrl);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                var blob = await resp.blob();
+                var fileName = video.fileName || 'video.mp4';
+
+                var isCapacitor = (typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+                if (isCapacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
+                    var base64Data = await new Promise(function(resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function(e) { resolve(e.target.result); };
+                        reader.onerror = function() { reject(new Error('读取失败')); };
+                        reader.readAsDataURL(blob);
+                    });
+                    var matches = base64Data.match(/^data:[^;]+;base64,(.+)$/);
+                    if (!matches) throw new Error('Base64转换失败');
+                    await Capacitor.Plugins.Filesystem.writeFile({
+                        path: fileName,
+                        data: matches[1],
+                        directory: 'EXTERNAL',
+                        recursive: true
+                    });
+                    showToast('视频已保存: ' + fileName, 'success');
+                } else {
+                    var blobUrl = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = fileName;
+                    a.style.display = 'none';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 60000);
+                    showToast('下载完成', 'success');
+                }
+            } catch(e) {
+                showToast('下载失败：' + e.message, 'error');
+            }
+        }
+
+        async function deleteVideo(videoId) {
+            if (!guardWrite('删除视频')) return;
+            if (!confirm('确定要删除这个视频吗？')) return;
+
+            var artistId = _currentDetailArtist ? _currentDetailArtist.id : 0;
+            if (!artistId) return;
+
+            var result = await DBStorage.deleteVideo(artistId, videoId);
+            if (result.ok) {
+                // Remove from local array
+                for (var i = 0; i < _currentVideos.length; i++) {
+                    if (_currentVideos[i].id === videoId) {
+                        _currentVideos.splice(i, 1);
+                        break;
+                    }
+                }
+                renderVideoGallery();
+                await saveArtistVideos();
+                showToast('视频删除成功', 'success');
+            } else {
+                showToast('删除失败：' + (result.error || '未知错误'), 'error');
+            }
+        }
+
+        async function saveArtistVideos() {
+            if (!_currentDetailArtist) return;
+            var artistId = _currentDetailArtist.id;
+            var videosJson = JSON.stringify(_currentVideos);
+
+            await DBStorage.saveArtistVideos(artistId, videosJson);
+            _currentDetailArtist.videos = videosJson;
+            for (var i = 0; i < appData.artists.length; i++) {
+                if (appData.artists[i].id === artistId) {
+                    appData.artists[i].videos = videosJson;
                     break;
                 }
             }

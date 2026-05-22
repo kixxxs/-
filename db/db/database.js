@@ -87,6 +87,7 @@ function createTables() {
     updated_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
   try { db.run('ALTER TABLE artists ADD COLUMN photos TEXT DEFAULT \'[]\''); } catch(_) {}
+  try { db.run('ALTER TABLE artists ADD COLUMN videos TEXT DEFAULT \'[]\''); } catch(_) {}
   db.run(`CREATE TABLE IF NOT EXISTS contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     artist_id INTEGER NOT NULL,

@@ -11,7 +11,7 @@ const ROOT = __dirname;
 
 // ===== Middleware =====
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '200mb' }));
 
 // ===== Login accounts (same as frontend) =====
 var LOGIN_ACCOUNTS = [
@@ -271,6 +271,96 @@ app.post('/api/reset', authMiddleware, adminMiddleware, function(req, res) {
         res.json({ ok: true });
     } catch(err) {
         res.json({ ok: false, error: err.message });
+    }
+});
+
+// ===== 艺人视频管理 =====
+
+app.post('/api/artists/:id/videos/upload', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var artistId = parseInt(req.params.id, 10);
+        var dataUrl = req.body.dataUrl;
+        var fileName = req.body.fileName || 'video.mp4';
+        if (!dataUrl || !dataUrl.startsWith('data:video/')) {
+            return res.json({ ok: false, error: '无效的视频格式' });
+        }
+        var filePath = db.saveArtistVideo(artistId, dataUrl, fileName);
+        broadcast('videos-updated', { id: artistId });
+        res.json({ ok: true, path: filePath });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.put('/api/artists/:id/videos', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var artistId = parseInt(req.params.id, 10);
+        var videosJson = req.body.videos || '[]';
+        db.saveArtistVideos(artistId, videosJson);
+        broadcast('videos-updated', { id: artistId });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.delete('/api/artists/:id/videos/:videoId', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var artistId = parseInt(req.params.id, 10);
+        var videoId = req.params.videoId;
+        db.deleteArtistVideo(artistId, videoId);
+        broadcast('videos-updated', { id: artistId });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.get('/api/videos/stream/:artistId/:videoId', function(req, res) {
+    try {
+        var artistId = parseInt(req.params.artistId, 10);
+        var videoId = req.params.videoId;
+        var video = db.getVideoStreamInfo(artistId, videoId);
+        if (!video || !video.serverPath) {
+            return res.status(404).json({ ok: false, error: '视频不存在' });
+        }
+        var filePath = path.join(__dirname, 'server', 'src', video.serverPath);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ ok: false, error: '视频文件不存在' });
+        }
+        var stat = fs.statSync(filePath);
+        var fileSize = stat.size;
+        var contentType = video.mimeType || 'video/mp4';
+        var range = req.headers.range;
+        if (range) {
+            var parts = range.replace(/bytes=/, '').split('-');
+            var start = parseInt(parts[0], 10);
+            var end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            if (start >= fileSize) {
+                res.status(416).set('Content-Range', 'bytes */' + fileSize);
+                return res.end();
+            }
+            var chunkSize = (end - start) + 1;
+            var stream = fs.createReadStream(filePath, { start: start, end: end });
+            res.status(206).set({
+                'Content-Range': 'bytes ' + start + '-' + end + '/' + fileSize,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunkSize,
+                'Content-Type': contentType
+            });
+            stream.pipe(res);
+        } else {
+            res.status(200).set({
+                'Content-Length': fileSize,
+                'Content-Type': contentType,
+                'Accept-Ranges': 'bytes'
+            });
+            fs.createReadStream(filePath).pipe(res);
+        }
+    } catch(err) {
+        if (!res.headersSent) {
+            res.status(500).json({ ok: false, error: err.message });
+        }
     }
 });
 

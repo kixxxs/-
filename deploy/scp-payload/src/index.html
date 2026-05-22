@@ -157,7 +157,7 @@
         /* ---- Base Reset ---- */
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-        html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+        html { font-size: 16px; -webkit-font-smoothing: antialiased; overflow-x: hidden; width: 100%; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -166,6 +166,8 @@
             transition: background-color 0.4s ease, color 0.4s ease;
             line-height: 1.6;
             position: relative;
+            overflow-x: hidden;
+            width: 100%;
         }
 
         /* ---- Grain Texture Overlay (Noir only) ---- */
@@ -954,7 +956,7 @@
             /* Capacitor 移动端增强 */
             * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
             input, textarea, select { -webkit-user-select: text; user-select: text; }
-            body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
+            body { overscroll-behavior: none; overscroll-behavior-x: none; -webkit-overflow-scrolling: touch; }
             .modal-body { max-height: 60vh; overflow-y: auto; }
             .table td .btn { min-width: 36px; min-height: 36px; margin: 2px; border-radius: 8px; }
             .app-container { padding-top: calc(8px + var(--safe-area-top)); }
@@ -1937,8 +1939,9 @@
                 </div>
                 <span class="close-btn" onclick="closeModal('pdfPreviewModal')">&times;</span>
             </div>
-            <div class="modal-body" style="padding:0;overflow:hidden;position:relative;touch-action:none;" id="pdfZoomContainer">
+            <div class="modal-body" style="padding:0;overflow:hidden;position:relative;touch-action:auto;" id="pdfZoomContainer">
                 <iframe id="pdfPreviewIframe" style="width:100%;height:75vh;border:none;transform-origin:0 0;transition:transform 0.15s ease;" scrolling="auto"></iframe>
+                <div id="pdfCanvasViewer" style="display:none;width:100%;height:75vh;overflow:auto;padding:12px;background:var(--body-bg);text-align:center;-webkit-overflow-scrolling:touch;"></div>
             </div>
         </div>
     </div>
@@ -2115,7 +2118,36 @@
                     <div style="color:#aaa;padding:20px;">暂无形象照</div>
                 </div>
             </div>
+
+            <!-- 视频区域 -->
+            <div style="padding:0 20px 20px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                    <h4 style="margin:0;">相关视频</h4>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span id="uploadVideoProgress" style="font-size:12px;color:var(--primary-color);display:none;">0%</span>
+                        <button type="button" id="uploadVideoBtn" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('detailVideoInput').click();">
+                            <i class="fas fa-video me-1"></i>上传视频
+                        </button>
+                    </div>
+                    <input type="file" id="detailVideoInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo" style="display:none;" onchange="uploadArtistVideo(event)">
+                </div>
+                <div id="uploadVideoProgressBar" style="display:none;height:4px;background:var(--border-color);border-radius:2px;margin-bottom:8px;overflow:hidden;">
+                    <div id="uploadVideoProgressBarInner" style="height:100%;background:var(--primary-color);width:0%;transition:width 0.2s;"></div>
+                </div>
+                <small class="text-muted">支持 MP4、WebM、MOV 格式，单文件不超过 200MB</small>
+                <div id="videoGallery" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;min-height:60px;">
+                    <div style="color:var(--text-muted);padding:20px;">暂无视频</div>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <!-- 视频播放器 -->
+    <div id="videoPlayerModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;align-items:center;justify-content:center;" onclick="closeVideoPlayer()">
+        <span style="position:absolute;top:20px;right:30px;color:#fff;font-size:40px;cursor:pointer;z-index:10;">&times;</span>
+        <video id="videoPlayer" controls playsinline style="max-width:95%;max-height:90%;" onclick="event.stopPropagation();">
+            您的浏览器不支持视频播放
+        </video>
     </div>
 
     <!-- 图片查看器（灯箱） -->
@@ -2689,6 +2721,26 @@
             async readAnnouncementFile(id) {
                 var result = await this._fetch('/api/announcements/' + id + '/file');
                 return result.ok ? result.data : null;
+            },
+
+            async uploadVideo(artistId, dataUrl, fileName) {
+                return this._fetch('/api/artists/' + artistId + '/videos/upload', {
+                    method: 'POST',
+                    body: JSON.stringify({ dataUrl: dataUrl, fileName: fileName })
+                });
+            },
+
+            async deleteVideo(artistId, videoId) {
+                return this._fetch('/api/artists/' + artistId + '/videos/' + videoId, {
+                    method: 'DELETE'
+                });
+            },
+
+            async saveArtistVideos(artistId, videosJson) {
+                return this._fetch('/api/artists/' + artistId + '/videos', {
+                    method: 'PUT',
+                    body: JSON.stringify({ videos: videosJson })
+                });
             }
         };
 
@@ -3057,6 +3109,82 @@
                 return { ok: false, error: 'IPC 不可用' };
             },
 
+            async uploadVideo(artistId, dataUrlOrFilePath, fileName) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.uploadVideo(artistId, dataUrlOrFilePath, fileName); }
+                    catch(e) { console.warn('[DBStorage] Server uploadVideo failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try {
+                        var srvUrl = localStorage.getItem('v2_server_url') || '';
+                        if (srvUrl) {
+                            ServerStorage.init(srvUrl, sessionStorage.getItem('v2_login_token') || '');
+                            return await ServerStorage.uploadVideo(artistId, dataUrlOrFilePath, fileName);
+                        }
+                        return CapDB.saveArtistVideo(artistId, dataUrlOrFilePath, fileName);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) return { ok: false, error: '内存模式不支持视频上传' };
+                // Electron mode: filePath is a local file path, copy via IPC
+                if (window.electronAPI && window.electronAPI.copyVideoFile) {
+                    try {
+                        return await window.electronAPI.copyVideoFile(artistId, dataUrlOrFilePath, fileName);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async deleteVideo(artistId, videoId) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.deleteVideo(artistId, videoId); }
+                    catch(e) { console.warn('[DBStorage] Server deleteVideo failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try {
+                        var srvUrl2 = localStorage.getItem('v2_server_url') || '';
+                        if (srvUrl2) {
+                            ServerStorage.init(srvUrl2, sessionStorage.getItem('v2_login_token') || '');
+                            return await ServerStorage.deleteVideo(artistId, videoId);
+                        }
+                        return CapDB.deleteArtistVideo(artistId, videoId);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) return { ok: true };
+                if (window.electronAPI && window.electronAPI.deleteArtistVideo) {
+                    try {
+                        return await window.electronAPI.deleteArtistVideo(artistId, videoId);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async saveArtistVideos(artistId, videosJson) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.saveArtistVideos(artistId, videosJson); }
+                    catch(e) { console.warn('[DBStorage] Server saveArtistVideos failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try {
+                        var srvUrl3 = localStorage.getItem('v2_server_url') || '';
+                        if (srvUrl3) {
+                            ServerStorage.init(srvUrl3, sessionStorage.getItem('v2_login_token') || '');
+                            return await ServerStorage.saveArtistVideos(artistId, videosJson);
+                        }
+                        return CapDB.saveArtistVideos(artistId, videosJson);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) return { ok: true };
+                if (window.electronAPI && window.electronAPI.saveArtistVideos) {
+                    try {
+                        return await window.electronAPI.saveArtistVideos(artistId, videosJson);
+                    } catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
             async getAnnouncements() {
                 if (this._serverMode) {
                     try { return await ServerStorage.getAnnouncements(); }
@@ -3179,7 +3307,7 @@
             var eventTypes = ['artist-added', 'artist-updated', 'artist-deleted',
                               'contract-added', 'contract-updated',
                               'salaries-added', 'evaluations-added',
-                              'photos-updated', 'avatar-updated',
+                              'photos-updated', 'avatar-updated', 'videos-updated',
                               'announcement-added', 'announcement-deleted', 'data-reset'];
 
             eventTypes.forEach(function(type) {
@@ -4719,6 +4847,9 @@
         function closeModal(modalId) {
             var el = document.getElementById(modalId);
             if (el) el.style.display = 'none';
+            if (modalId === 'pdfPreviewModal') {
+                clearPdfPreviewContent();
+            }
         }
 
         // 生成新ID
@@ -4974,44 +5105,6 @@
                 return;
             }
 
-            // 移动端：直接用系统浏览器打开PDF，不走iframe
-            if (_useCapacitorStore) {
-                var capBase64 = contract.contractFile;
-                // 已是base64数据，直接用
-                if (capBase64 && capBase64.startsWith('data:application/pdf;base64,')) {
-                    openPdfViaSystem(capBase64);
-                    _pdfPreviewLock = false;
-                    return;
-                }
-                // 是服务器路径且有服务器连接，通过API获取
-                if (capBase64 && DBStorage._serverMode) {
-                    try {
-                        var srvResp = await fetch(ServerStorage._base + '/api/contracts/' + contractId + '/file', {
-                            headers: { 'Authorization': 'Bearer ' + ServerStorage._token }
-                        });
-                        var srvJson = await srvResp.json();
-                        if (srvJson.ok && srvJson.data) {
-                            openPdfViaSystem(srvJson.data);
-                        } else {
-                            showToast('读取PDF文件失败：' + (srvJson.error || '未知错误'), 'error');
-                        }
-                    } catch(e) {
-                        showToast('加载PDF失败：' + e.message, 'error');
-                    }
-                    _pdfPreviewLock = false;
-                    return;
-                }
-                showToast('文件数据无效', 'error');
-                _pdfPreviewLock = false;
-                return;
-            }
-
-            document.getElementById('pdfPreviewTitle').textContent = '合约PDF预览';
-            document.getElementById('pdfPreviewSubtitle').textContent = contract.artistName || '未知';
-            resetPdfZoom();
-            document.getElementById('pdfPreviewIframe').src = '';
-            document.getElementById('pdfPreviewModal').style.display = 'block';
-
             try {
                 var base64Data = '';
                 // 内存存储模式：contractFile 本身就是 base64 数据
@@ -5046,9 +5139,10 @@
                     return;
                 }
 
-                document.getElementById('pdfPreviewIframe').src = base64Data;
+                await showPdfPreview(base64Data, '合约PDF预览', contract.artistName || '未知');
             } catch(e) {
                 showToast('加载PDF失败：' + e.message, 'error');
+                closeModal('pdfPreviewModal');
             } finally {
                 _pdfPreviewLock = false;
             }
@@ -5078,12 +5172,14 @@
             var html = '';
             filtered.forEach(function(a, idx) {
                 var dateStr = (a.createdAt || '').slice(0, 10);
-                html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;' +
+                html += '<div role="button" tabindex="0" onclick="previewAnnouncementPDF(' + a.id + ')" ' +
+                    'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();previewAnnouncementPDF(' + a.id + ')}" ' +
+                    'style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;cursor:pointer;-webkit-tap-highlight-color:rgba(212,168,83,0.18);' +
                     (idx < filtered.length - 1 ? 'border-bottom:1px solid var(--border-light);' : '') + '">' +
                     '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">' +
                     '<i class="fas fa-file-pdf" style="color:#e74c3c;font-size:18px;flex-shrink:0;"></i>' +
                     '<div style="min-width:0;">' +
-                    '<a href="javascript:void(0)" onclick="previewAnnouncementPDF(' + a.id + ')" style="color:var(--primary-color);font-size:14px;font-weight:600;text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(a.title || a.fileName || '未命名文件') + '</a>' +
+                    '<div style="color:var(--primary-color);font-size:14px;font-weight:600;text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(a.title || a.fileName || '未命名文件') + '</div>' +
                     '<div style="font-size:11px;color:var(--text-muted);">' + escapeHtml(a.fileName || '') + (dateStr ? ' · ' + dateStr : '') + '</div>' +
                     '</div></div></div>';
             });
@@ -5113,45 +5209,6 @@
                 return;
             }
 
-            // 移动端：直接用系统浏览器打开PDF，不走iframe
-            if (_useCapacitorStore) {
-                var capBase64 = ann.filePath;
-                // 已是base64数据，直接用
-                if (capBase64 && capBase64.startsWith('data:application/pdf;base64,')) {
-                    openPdfViaSystem(capBase64);
-                    _pdfPreviewLock = false;
-                    return;
-                }
-                // 是服务器路径且有服务器连接，通过API获取
-                if (capBase64 && DBStorage._serverMode) {
-                    try {
-                        var srvResp = await fetch(ServerStorage._base + '/api/announcements/' + id + '/file', {
-                            headers: { 'Authorization': 'Bearer ' + ServerStorage._token }
-                        });
-                        var srvBody = await srvResp.json().catch(function() { return {}; });
-                        if (srvBody.ok && srvBody.data) {
-                            openPdfViaSystem(srvBody.data);
-                        } else {
-                            showToast('读取文件失败', 'error');
-                        }
-                    } catch(e) {
-                        showToast('加载PDF失败：' + e.message, 'error');
-                    }
-                    _pdfPreviewLock = false;
-                    return;
-                }
-                showToast('文件数据无效', 'error');
-                _pdfPreviewLock = false;
-                return;
-            }
-
-            document.getElementById('pdfPreviewTitle').textContent = '文件预览';
-            document.getElementById('pdfPreviewSubtitle').textContent = '';
-            resetPdfZoom();
-            // Clear src and show modal FIRST so the iframe is visible before loading
-            document.getElementById('pdfPreviewIframe').src = '';
-            document.getElementById('pdfPreviewModal').style.display = 'block';
-
             try {
                 var base64Data = '';
                 if (ann.filePath && ann.filePath.startsWith('data:application/pdf;base64,')) {
@@ -5173,67 +5230,363 @@
                     showToast('当前环境不支持PDF预览', 'error'); closeModal('pdfPreviewModal'); return;
                 }
 
-                document.getElementById('pdfPreviewIframe').src = base64Data;
+                await showPdfPreview(base64Data, '文件预览', '');
             } catch(e) {
                 showToast('加载PDF失败：' + e.message, 'error');
+                closeModal('pdfPreviewModal');
             } finally {
                 _pdfPreviewLock = false;
             }
         }
 
-        // ===== Capacitor系统PDF打开 =====
-        async function openPdfViaSystem(base64Data) {
-            if (!base64Data || !base64Data.startsWith('data:application/pdf;base64,')) return;
+        // ===== PDF.js 本地渲染（用于 Capacitor/移动端，不依赖 WebView 原生 PDF 能力）=====
+        var _pdfCurrentBase64 = '';
+        var _pdfRenderToken = 0;
+        var _pdfJsModulePromise = null;
+
+        function isNativePdfPreview() {
+            return typeof Capacitor !== 'undefined'
+                && Capacitor.isNativePlatform
+                && Capacitor.isNativePlatform();
+        }
+
+        function clearPdfPreviewContent() {
+            _pdfRenderToken++;
+            _pdfCurrentBase64 = '';
+            _pdfPageMetas = [];
+            if (_pdfDoc && _pdfDoc.cleanup) _pdfDoc.cleanup();
+            _pdfDoc = null;
+            var iframe = document.getElementById('pdfPreviewIframe');
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (viewer && _pdfViewerScrollAttached) {
+                viewer.removeEventListener('scroll', _onPdfViewerScroll);
+                _pdfViewerScrollAttached = false;
+            }
+            if (iframe) {
+                iframe.src = '';
+                iframe.style.display = '';
+                iframe.style.transform = '';
+            }
+            if (viewer) {
+                viewer.innerHTML = '';
+                viewer.style.display = 'none';
+            }
+        }
+
+        function base64PdfToBytes(base64Data) {
+            var matches = base64Data && base64Data.match(/^data:application\/pdf;base64,(.+)$/);
+            if (!matches) throw new Error('PDF数据格式无效');
+            var binary = atob(matches[1].replace(/\s/g, ''));
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        function loadPdfJs() {
+            if (_pdfJsModulePromise) return _pdfJsModulePromise;
+            if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+
+            var moduleUrl = new URL('lib/js/pdfjs/pdf.min.mjs', window.location.href).toString();
+            var workerUrl = new URL('lib/js/pdfjs/pdf.worker.min.mjs', window.location.href).toString();
+
+            _pdfJsModulePromise = import(moduleUrl).then(function(pdfjsLib) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+                return pdfjsLib;
+            });
+            return _pdfJsModulePromise;
+        }
+
+        async function showPdfPreview(base64Data, title, subtitle) {
+            if (!base64Data || !base64Data.startsWith('data:application/pdf;base64,')) {
+                throw new Error('PDF数据格式无效');
+            }
+
+            var modal = document.getElementById('pdfPreviewModal');
+            var iframe = document.getElementById('pdfPreviewIframe');
+            var viewer = document.getElementById('pdfCanvasViewer');
+            document.getElementById('pdfPreviewTitle').textContent = title || 'PDF预览';
+            document.getElementById('pdfPreviewSubtitle').textContent = subtitle || '';
+
+            _pdfCurrentBase64 = '';
+            if (_pdfDoc && _pdfDoc.cleanup) _pdfDoc.cleanup();
+            _pdfDoc = null;
+            resetPdfZoom();
+            _pdfCurrentBase64 = base64Data;
+            _pdfRenderToken++;
+
+            if (iframe) {
+                iframe.src = '';
+                iframe.style.display = '';
+                iframe.style.transform = '';
+            }
+            if (viewer) {
+                viewer.innerHTML = '';
+                viewer.style.display = 'none';
+            }
+            if (modal) modal.style.display = 'block';
+
+            if (isNativePdfPreview()) {
+                if (iframe) iframe.style.display = 'none';
+                if (viewer) {
+                    viewer.style.display = 'block';
+                    viewer.innerHTML = '<div style="padding:32px;color:var(--text-muted);">PDF加载中...</div>';
+                }
+                await renderPdfToCanvas(base64Data);
+            } else if (iframe) {
+                iframe.src = base64Data;
+            }
+        }
+
+        async function _getPdfDoc(base64Data) {
+            if (_pdfDoc) return _pdfDoc;
+            var pdfjsLib = await loadPdfJs();
+            var bytes = base64PdfToBytes(base64Data);
+            var loadingTask = pdfjsLib.getDocument({ data: bytes });
+            _pdfDoc = await loadingTask.promise;
+            return _pdfDoc;
+        }
+
+        function schedulePdfReRender() {
+            if (_pdfReRenderPending) return;
+            _pdfReRenderPending = true;
+            requestAnimationFrame(function() {
+                _pdfReRenderPending = false;
+                if (!_pdfCurrentBase64) return;
+                if (_pdfPageMetas.length) {
+                    reRenderPages();
+                } else {
+                    renderPdfToCanvas(_pdfCurrentBase64).catch(function(e) {
+                        console.warn('PDF re-render failed:', e.message);
+                    });
+                }
+            });
+        }
+
+        var _pdfPageMetas = [];
+        var _pdfViewerScrollAttached = false;
+
+        function _renderOnePage(meta, deviceScale) {
+            if (meta.rendered || !_pdfDoc) return Promise.resolve();
+            var renderToken = _pdfRenderToken;
+            return _pdfDoc.getPage(meta.pageNum).then(function(page) {
+                if (renderToken !== _pdfRenderToken) return;
+                var viewport = meta.viewport;
+                var canvas = document.createElement('canvas');
+                canvas.style.cssText = 'display:block;max-width:none;';
+                canvas.width = Math.floor(viewport.width * deviceScale);
+                canvas.height = Math.floor(viewport.height * deviceScale);
+                canvas.style.width = Math.floor(viewport.width) + 'px';
+                canvas.style.height = Math.floor(viewport.height) + 'px';
+                meta.placeholder.innerHTML = '';
+                meta.placeholder.appendChild(canvas);
+                var ctx = canvas.getContext('2d');
+                return page.render({
+                    canvasContext: ctx,
+                    viewport: viewport,
+                    transform: deviceScale !== 1 ? [deviceScale, 0, 0, deviceScale, 0, 0] : null
+                }).promise.then(function() {
+                    meta.rendered = true;
+                    meta.canvas = canvas;
+                });
+            });
+        }
+
+        function _unrenderOnePage(meta) {
+            if (!meta.rendered) return;
+            if (meta.canvas) {
+                meta.canvas.width = 0;
+                meta.canvas.height = 0;
+                meta.canvas.remove();
+                meta.canvas = null;
+            }
+            meta.rendered = false;
+            meta.placeholder.innerHTML = '';
+            var label = document.createElement('div');
+            label.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#888;font-size:13px;pointer-events:none;';
+            label.textContent = '第' + meta.pageNum + '页';
+            meta.placeholder.appendChild(label);
+        }
+
+        function _renderVisiblePages() {
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (!viewer || !_pdfPageMetas.length) return;
+            var viewerRect = viewer.getBoundingClientRect();
+            var renderBuf = Math.max(600, viewer.clientHeight);
+            var unrenderBuf = Math.max(1800, viewer.clientHeight * 2);
+            var visibleTop = -renderBuf;
+            var visibleBottom = viewer.clientHeight + renderBuf;
+            var keepTop = -unrenderBuf;
+            var keepBottom = viewer.clientHeight + unrenderBuf;
+            var deviceScale = _pdfDeviceScale;
+            for (var i = 0; i < _pdfPageMetas.length; i++) {
+                var meta = _pdfPageMetas[i];
+                var pr = meta.placeholder.getBoundingClientRect();
+                var top = pr.top - viewerRect.top;
+                var bottom = pr.bottom - viewerRect.top;
+                if (meta.rendered) {
+                    if (bottom < keepTop || top > keepBottom) {
+                        _unrenderOnePage(meta);
+                    }
+                } else {
+                    if (bottom >= visibleTop && top <= visibleBottom) {
+                        _renderOnePage(meta, deviceScale);
+                    }
+                }
+            }
+        }
+
+        var _pdfDeviceScale = 2;
+
+        async function renderPdfToCanvas(base64Data) {
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (!viewer) throw new Error('PDF预览容器不存在');
+
+            var renderToken = ++_pdfRenderToken;
+            var pdf = await _getPdfDoc(base64Data);
+            if (renderToken !== _pdfRenderToken) return;
+
+            // Remove old scroll listener
+            if (_pdfViewerScrollAttached) {
+                viewer.removeEventListener('scroll', _onPdfViewerScroll);
+                _pdfViewerScrollAttached = false;
+            }
+
+            viewer.innerHTML = '';
+            var wrapper = document.createElement('div');
+            wrapper.id = 'pdfPagesWrapper';
+            wrapper.style.cssText = 'transform-origin:0 0;';
+            viewer.appendChild(wrapper);
+            _pdfPageMetas = [];
+            var availableWidth = Math.max(260, viewer.clientWidth - 24);
+
+            // Reduce deviceScale at high zoom — zoom already provides extra resolution
+            _pdfDeviceScale = _pdfZoomScale > 1.8 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+
+            // Fetch all pages in parallel for viewport dimensions
+            var pageNums = [];
+            for (var pn = 1; pn <= pdf.numPages; pn++) pageNums.push(pn);
+            var pages = await Promise.all(pageNums.map(function(pn) { return pdf.getPage(pn); }));
+            if (renderToken !== _pdfRenderToken) return;
+
+            // Create placeholder slots (no canvas yet)
+            for (var i = 0; i < pages.length; i++) {
+                var page = pages[i];
+                var pageNum = i + 1;
+                var baseViewport = page.getViewport({ scale: 1 });
+                var fitScale = Math.min(2, availableWidth / baseViewport.width);
+                var scale = Math.max(0.4, fitScale * _pdfZoomScale);
+                var viewport = page.getViewport({ scale: scale });
+
+                var slot = document.createElement('div');
+                slot.style.cssText = 'display:inline-block;margin:0 auto 12px;background:#444;box-shadow:0 2px 10px rgba(0,0,0,0.35);max-width:100%;position:relative;';
+                slot.style.width = Math.floor(viewport.width) + 'px';
+                slot.style.height = Math.floor(viewport.height) + 'px';
+                var label = document.createElement('div');
+                label.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#888;font-size:13px;pointer-events:none;';
+                label.textContent = '第' + pageNum + '页';
+                slot.appendChild(label);
+                wrapper.appendChild(slot);
+
+                _pdfPageMetas.push({
+                    pageNum: pageNum,
+                    page: page,
+                    baseWidth: baseViewport.width,
+                    baseHeight: baseViewport.height,
+                    viewport: viewport,
+                    placeholder: slot,
+                    rendered: false,
+                    canvas: null
+                });
+            }
+
+            // Render pages in/near viewport immediately
+            _renderVisiblePages();
+
+            // Lazy render on scroll (throttled via rAF)
+            if (!_pdfViewerScrollAttached) {
+                var scrollPending = false;
+                _onPdfViewerScroll = function() {
+                    if (scrollPending) return;
+                    scrollPending = true;
+                    requestAnimationFrame(function() {
+                        scrollPending = false;
+                        _renderVisiblePages();
+                    });
+                };
+                viewer.addEventListener('scroll', _onPdfViewerScroll, { passive: true });
+                _pdfViewerScrollAttached = true;
+            }
+        }
+
+        // Fast re-render after zoom change — reuses cached page objects, no re-fetch
+        function reRenderPages() {
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (!viewer || !_pdfPageMetas.length) return;
+            var availableWidth = Math.max(260, viewer.clientWidth - 24);
+            _pdfDeviceScale = _pdfZoomScale > 1.8 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+
+            for (var i = 0; i < _pdfPageMetas.length; i++) {
+                var meta = _pdfPageMetas[i];
+                var fitScale = Math.min(2, availableWidth / meta.baseWidth);
+                var scale = Math.max(0.4, fitScale * _pdfZoomScale);
+                meta.viewport = meta.page.getViewport({ scale: scale });
+                meta.placeholder.style.width = Math.floor(meta.viewport.width) + 'px';
+                meta.placeholder.style.height = Math.floor(meta.viewport.height) + 'px';
+                _unrenderOnePage(meta);
+            }
+
+            _renderVisiblePages();
+            // Keep wrapper at identity after re-render — pages now have correct pixel sizes
+            var wrapper = document.getElementById('pdfPagesWrapper');
+            if (wrapper) wrapper.style.transform = '';
+            _pdfZoomTranslateX = 0;
+            _pdfZoomTranslateY = 0;
+        }
+
+        // 保留旧的写文件函数供兼容（不再被预览流程调用，但其他模块可能引用）
+        async function writePdfToFilesystem(base64Data) {
+            if (!base64Data || !base64Data.startsWith('data:application/pdf;base64,')) return '';
             try {
                 var matches = base64Data.match(/^data:application\/pdf;base64,(.+)$/);
-                if (!matches) return;
-                // Try Capacitor Filesystem plugin for Android
+                if (!matches) return '';
                 if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
                     var result = await Capacitor.Plugins.Filesystem.writeFile({
                         path: 'pdf_preview_' + Date.now() + '.pdf',
                         data: matches[1],
-                        directory: 2
+                        directory: 'DATA',
+                        recursive: true
                     });
                     var uri = result.uri;
                     if (typeof Capacitor.convertFileSrc === 'function') {
                         uri = Capacitor.convertFileSrc(uri);
                     }
-                    window.open(uri, '_blank');
-                    return;
+                    return uri;
                 }
             } catch(e) {
-                console.warn('Capacitor Filesystem open failed:', e.message);
+                console.warn('Capacitor Filesystem write failed:', e.message);
             }
-            // Fallback: trigger download via blob URL
-            try {
-                var byteChars = atob(matches[1]);
-                var bytes = new Uint8Array(byteChars.length);
-                for (var i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-                var blob = new Blob([bytes], { type: 'application/pdf' });
-                var blobUrl = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = blobUrl;
-                a.download = 'preview.pdf';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 60000);
-            } catch(e2) {
-                console.warn('Blob fallback failed:', e2.message);
-                showToast('此设备不支持PDF预览，请使用电脑端查看', 'error');
-            }
+            return '';
         }
 
         // ===== PDF预览缩放功能 =====
+        var _pdfDoc = null;
+        var _pdfReRenderPending = false;
         var _pdfZoomScale = 1;
         var _pdfZoomTranslateX = 0;
         var _pdfZoomTranslateY = 0;
 
         function applyPdfZoom() {
             var iframe = document.getElementById('pdfPreviewIframe');
+            var wrapper = document.getElementById('pdfPagesWrapper');
             var label = document.getElementById('pdfZoomLevel');
-            if (iframe) {
-                iframe.style.transform = 'translate(' + _pdfZoomTranslateX + 'px,' + _pdfZoomTranslateY + 'px) scale(' + _pdfZoomScale + ')';
+            var transform = 'translate(' + _pdfZoomTranslateX + 'px,' + _pdfZoomTranslateY + 'px) scale(' + _pdfZoomScale + ')';
+            if (iframe && iframe.style.display !== 'none') {
+                iframe.style.transform = transform;
+            }
+            if (wrapper) {
+                wrapper.style.transform = transform;
             }
             if (label) {
                 label.textContent = Math.round(_pdfZoomScale * 100) + '%';
@@ -5248,6 +5601,17 @@
             if (_pdfZoomScale <= 1) {
                 _pdfZoomTranslateX = 0;
                 _pdfZoomTranslateY = 0;
+            }
+            if (_pdfCurrentBase64 && isNativePdfPreview()) {
+                applyPdfZoom();
+                if (_pdfPageMetas.length) {
+                    reRenderPages();
+                } else {
+                    renderPdfToCanvas(_pdfCurrentBase64).catch(function(e) {
+                        showToast('缩放PDF失败：' + e.message, 'error');
+                    });
+                }
+                return;
             }
             applyPdfZoom();
         }
@@ -5294,7 +5658,7 @@
                         e.preventDefault();
                     }
                     lastTapTime = now;
-                    if (_pdfZoomScale > 1) {
+                    if (_pdfZoomScale > 1 && !isNativePdfPreview()) {
                         dragging = true;
                         pinching = false;
                         lastX = e.touches[0].clientX;
@@ -5339,6 +5703,9 @@
 
             container.addEventListener('touchend', function(e) {
                 if (e.touches.length === 0) {
+                    if (pinching && isNativePdfPreview() && _pdfCurrentBase64) {
+                        schedulePdfReRender();
+                    }
                     dragging = false;
                     pinching = false;
                 }
@@ -6345,6 +6712,8 @@
         var _currentDetailArtist = null;
         var _currentPhotos = [];
         var _currentPhotoIndex = 0;
+        var _currentVideos = [];
+        var _currentVideoIndex = 0;
 
         function openArtistDetail(id) {
             var artist = null;
@@ -6430,6 +6799,18 @@
             } catch(e) { _currentPhotos = []; }
             _currentPhotoIndex = 0;
             renderPhotoGallery();
+
+            // 加载视频
+            _currentVideos = [];
+            try {
+                if (artist.videos && typeof artist.videos === 'string') {
+                    _currentVideos = JSON.parse(artist.videos);
+                } else if (Array.isArray(artist.videos)) {
+                    _currentVideos = artist.videos;
+                }
+            } catch(e) { _currentVideos = []; }
+            _currentVideoIndex = 0;
+            renderVideoGallery();
 
             document.getElementById('artistDetailModal').style.display = 'block';
         }
@@ -6518,6 +6899,294 @@
             for (var i = 0; i < appData.artists.length; i++) {
                 if (appData.artists[i].id === artistId) {
                     appData.artists[i].photos = photosJson;
+                    break;
+                }
+            }
+        }
+
+        // ===== 视频管理 =====
+
+        function formatFileSize(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            var units = ['B', 'KB', 'MB', 'GB'];
+            var i = Math.floor(Math.log(bytes) / Math.log(1024));
+            i = Math.min(i, units.length - 1);
+            return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+        }
+
+        function getVideoStreamUrl(video) {
+            if (!video || !video.serverPath) return '';
+            // Electron: use app-file:// custom protocol
+            if (window.electronAPI && window.electronAPI.isDesktop) {
+                return 'app-file://' + video.serverPath;
+            }
+            // Server/Capacitor: streaming URL from cloud
+            var srvUrl = localStorage.getItem('v2_server_url') || '';
+            if (srvUrl) {
+                return srvUrl.replace(/\/+$/, '') + '/api/videos/stream/' + (_currentDetailArtist ? _currentDetailArtist.id : 0) + '/' + encodeURIComponent(video.id);
+            }
+            // Capacitor local file
+            if (_useCapacitorStore && video.localPath) return video.localPath;
+            return '';
+        }
+
+        function renderVideoGallery() {
+            var gallery = document.getElementById('videoGallery');
+            if (!_currentVideos || _currentVideos.length === 0) {
+                gallery.innerHTML = '<div style="color:var(--text-muted);padding:20px;">暂无视频</div>';
+                return;
+            }
+            gallery.innerHTML = '';
+            _currentVideos.forEach(function(video, idx) {
+                var card = document.createElement('div');
+                card.style.cssText = 'width:160px;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;cursor:pointer;transition:box-shadow 0.2s;';
+                card.onmouseenter = function() { card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'; };
+                card.onmouseleave = function() { card.style.boxShadow = 'none'; };
+                var sizeStr = formatFileSize(video.size || 0);
+                card.innerHTML =
+                    '<div style="height:100px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;">' +
+                        '<i class="fas fa-play-circle" style="font-size:36px;color:var(--primary-color);"></i>' +
+                    '</div>' +
+                    '<div style="padding:8px;">' +
+                        '<div style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(video.fileName || '') + '">' + escapeHtml(video.fileName || '视频') + '</div>' +
+                        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + sizeStr + '</div>' +
+                        '<div style="margin-top:6px;display:flex;gap:6px;">' +
+                            '<button class="btn btn-sm btn-outline-primary" style="flex:1;font-size:11px;padding:2px 6px;" onclick="event.stopPropagation();playVideo(' + idx + ')"><i class="fas fa-play"></i> 播放</button>' +
+                            '<button class="btn btn-sm btn-outline-danger" style="font-size:11px;padding:2px 6px;" onclick="event.stopPropagation();deleteVideo(\'' + escapeHtml(video.id) + '\')"><i class="fas fa-trash"></i></button>' +
+                        '</div>' +
+                    '</div>';
+                card.addEventListener('click', function() { playVideo(idx); });
+                gallery.appendChild(card);
+            });
+        }
+
+        function playVideo(index) {
+            if (!_currentVideos || index < 0 || index >= _currentVideos.length) return;
+            var video = _currentVideos[index];
+            _currentVideoIndex = index;
+
+            var playerEl = document.getElementById('videoPlayer');
+            var modal = document.getElementById('videoPlayerModal');
+
+            // Pause and clear previous source first
+            playerEl.pause();
+            playerEl.removeAttribute('src');
+            playerEl.load();
+
+            var streamUrl = getVideoStreamUrl(video);
+            if (streamUrl) {
+                playerEl.src = streamUrl;
+                playerEl.load();
+                playerEl.play().catch(function() {});
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        function closeVideoPlayer() {
+            var modal = document.getElementById('videoPlayerModal');
+            var playerEl = document.getElementById('videoPlayer');
+            playerEl.pause();
+            playerEl.removeAttribute('src');
+            playerEl.load();
+            modal.style.display = 'none';
+        }
+
+        // Close video player with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                var videoModal = document.getElementById('videoPlayerModal');
+                if (videoModal && videoModal.style.display === 'flex') {
+                    closeVideoPlayer();
+                }
+            }
+        });
+
+        async function uploadArtistVideo(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+
+            if (file.size > 200 * 1024 * 1024) {
+                showToast('视频文件不能超过 200MB', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            if (!file.type.startsWith('video/')) {
+                showToast('请选择视频文件', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            var artistId = _currentDetailArtist ? _currentDetailArtist.id : 0;
+            if (!artistId) {
+                showToast('未找到艺人信息', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            // Show progress UI
+            var progressEl = document.getElementById('uploadVideoProgress');
+            var progressBar = document.getElementById('uploadVideoProgressBar');
+            var progressBarInner = document.getElementById('uploadVideoProgressBarInner');
+            var uploadBtn = document.getElementById('uploadVideoBtn');
+            var isElectron = window.electronAPI && window.electronAPI.isDesktop;
+
+            progressEl.style.display = 'inline';
+            progressBar.style.display = 'block';
+            uploadBtn.disabled = true;
+
+            function setProgress(pct, text) {
+                progressEl.textContent = text || (Math.round(pct) + '%');
+                progressBarInner.style.width = Math.round(pct) + '%';
+            }
+
+            function hideProgress() {
+                progressEl.style.display = 'none';
+                progressBar.style.display = 'none';
+                uploadBtn.disabled = false;
+            }
+
+            try {
+                setProgress(0);
+
+                if (isElectron && file.path) {
+                    // Electron: copy file via IPC (file.path is the local filesystem path)
+                    setProgress(30, '复制中...');
+                    console.log('[uploadVideo] Electron mode, file.path=' + file.path + ', fileName=' + file.name + ', size=' + file.size);
+                    var result = await DBStorage.uploadVideo(artistId, file.path, file.name);
+                    console.log('[uploadVideo] IPC result:', JSON.stringify(result));
+                    if (result.ok) {
+                        setProgress(100, '完成');
+                        await loadData();
+                        for (var i = 0; i < appData.artists.length; i++) {
+                            if (appData.artists[i].id === artistId) {
+                                _currentDetailArtist = appData.artists[i];
+                                try { _currentVideos = JSON.parse(appData.artists[i].videos || '[]'); } catch(e) { _currentVideos = []; }
+                                renderVideoGallery();
+                                break;
+                            }
+                        }
+                        showToast('视频上传成功', 'success');
+                    } else {
+                        console.error('[uploadVideo] IPC failed:', result.error);
+                        showToast('上传失败：' + (result.error || '未知错误'), 'error');
+                    }
+                } else {
+                    // Server/Capacitor: read file as base64, then upload
+                    setProgress(10, '读取中...');
+                    var dataUrl = await new Promise(function(resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function(e) { resolve(e.target.result); };
+                        reader.onerror = function(e) { reject(new Error('文件读取失败')); };
+                        reader.readAsDataURL(file);
+                    });
+
+                    setProgress(30, '上传中...');
+
+                    // For server mode with XHR progress tracking
+                    var srvUrl = localStorage.getItem('v2_server_url') || '';
+                    if (srvUrl) {
+                        var token = sessionStorage.getItem('v2_login_token') || '';
+                        var uploadResult = await new Promise(function(resolve, reject) {
+                            var xhr = new XMLHttpRequest();
+                            xhr.open('POST', srvUrl.replace(/\/+$/, '') + '/api/artists/' + artistId + '/videos/upload');
+                            xhr.setRequestHeader('Content-Type', 'application/json');
+                            if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+                            xhr.upload.onprogress = function(e) {
+                                if (e.lengthComputable) {
+                                    var pct = 30 + (e.loaded / e.total) * 70;
+                                    setProgress(pct);
+                                }
+                            };
+                            xhr.onload = function() {
+                                try {
+                                    var body = JSON.parse(xhr.responseText);
+                                    resolve(body);
+                                } catch(e) { resolve({ ok: false, error: '服务器响应异常' }); }
+                            };
+                            xhr.onerror = function() { resolve({ ok: false, error: '网络连接失败' }); };
+                            xhr.send(JSON.stringify({ dataUrl: dataUrl, fileName: file.name }));
+                        });
+                        var svrResult = uploadResult;
+                        if (svrResult.ok) {
+                            setProgress(100, '完成');
+                            await loadData();
+                            for (var j = 0; j < appData.artists.length; j++) {
+                                if (appData.artists[j].id === artistId) {
+                                    _currentDetailArtist = appData.artists[j];
+                                    try { _currentVideos = JSON.parse(appData.artists[j].videos || '[]'); } catch(e) { _currentVideos = []; }
+                                    renderVideoGallery();
+                                    break;
+                                }
+                            }
+                            showToast('视频上传成功', 'success');
+                        } else {
+                            showToast('上传失败：' + (svrResult.error || '未知错误'), 'error');
+                        }
+                    } else {
+                        // Capacitor no-server mode
+                        var capResult = await DBStorage.uploadVideo(artistId, dataUrl, file.name);
+                        if (capResult.ok) {
+                            setProgress(100, '完成');
+                            await loadData();
+                            for (var k = 0; k < appData.artists.length; k++) {
+                                if (appData.artists[k].id === artistId) {
+                                    _currentDetailArtist = appData.artists[k];
+                                    try { _currentVideos = JSON.parse(appData.artists[k].videos || '[]'); } catch(e) { _currentVideos = []; }
+                                    renderVideoGallery();
+                                    break;
+                                }
+                            }
+                            showToast('视频上传成功', 'success');
+                        } else {
+                            showToast('上传失败：' + (capResult.error || '未知错误'), 'error');
+                        }
+                    }
+                }
+            } catch(err) {
+                console.error('[uploadVideo] Exception:', err.message, err.stack);
+                showToast('上传失败：' + (err.message || '未知错误'), 'error');
+            }
+
+            hideProgress();
+            event.target.value = '';
+        }
+
+        async function deleteVideo(videoId) {
+            if (!guardWrite('删除视频')) return;
+            if (!confirm('确定要删除这个视频吗？')) return;
+
+            var artistId = _currentDetailArtist ? _currentDetailArtist.id : 0;
+            if (!artistId) return;
+
+            var result = await DBStorage.deleteVideo(artistId, videoId);
+            if (result.ok) {
+                // Remove from local array
+                for (var i = 0; i < _currentVideos.length; i++) {
+                    if (_currentVideos[i].id === videoId) {
+                        _currentVideos.splice(i, 1);
+                        break;
+                    }
+                }
+                renderVideoGallery();
+                await saveArtistVideos();
+                showToast('视频删除成功', 'success');
+            } else {
+                showToast('删除失败：' + (result.error || '未知错误'), 'error');
+            }
+        }
+
+        async function saveArtistVideos() {
+            if (!_currentDetailArtist) return;
+            var artistId = _currentDetailArtist.id;
+            var videosJson = JSON.stringify(_currentVideos);
+
+            await DBStorage.saveArtistVideos(artistId, videosJson);
+            _currentDetailArtist.videos = videosJson;
+            for (var i = 0; i < appData.artists.length; i++) {
+                if (appData.artists[i].id === artistId) {
+                    appData.artists[i].videos = videosJson;
                     break;
                 }
             }
