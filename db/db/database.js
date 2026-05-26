@@ -155,6 +155,27 @@ function createTables() {
     file_path TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS reserve_artists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    avatar TEXT DEFAULT '',
+    gender TEXT DEFAULT '',
+    age INTEGER DEFAULT 0,
+    height TEXT DEFAULT '',
+    region TEXT DEFAULT '',
+    positions TEXT DEFAULT '[]',
+    business_level TEXT DEFAULT 'C级',
+    daily_salary REAL DEFAULT 0,
+    phone TEXT DEFAULT '',
+    status TEXT DEFAULT '待定',
+    evaluator TEXT DEFAULT '',
+    evaluation_content TEXT DEFAULT '',
+    experience TEXT DEFAULT '',
+    photos TEXT DEFAULT '[]',
+    videos TEXT DEFAULT '[]',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`);
 }
 
 function execSelect(sql, params) {

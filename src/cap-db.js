@@ -31,6 +31,7 @@ var CapDB = (function() {
     try { db.run("ALTER TABLE salaries ADD COLUMN travel_fee REAL DEFAULT 0"); } catch(_) {}
     try { db.run("ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0"); } catch(_) {}
     db.run("CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL DEFAULT '', file_name TEXT DEFAULT '', file_path TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now','localtime')))");
+    db.run("CREATE TABLE IF NOT EXISTS reserve_artists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, avatar TEXT DEFAULT '', gender TEXT DEFAULT '', age INTEGER DEFAULT 0, height TEXT DEFAULT '', region TEXT DEFAULT '', positions TEXT DEFAULT '[]', business_level TEXT DEFAULT 'C级', daily_salary REAL DEFAULT 0, phone TEXT DEFAULT '', status TEXT DEFAULT '待定', evaluator TEXT DEFAULT '', evaluation_content TEXT DEFAULT '', experience TEXT DEFAULT '', photos TEXT DEFAULT '[]', videos TEXT DEFAULT '[]', created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')))");
   }
 
   function execSelect(sql, params) {
@@ -306,7 +307,8 @@ var CapDB = (function() {
     var stores = execSelect("SELECT name FROM stores").map(function(r) { return r.name; });
     var salaries = execSelect("SELECT * FROM salaries ORDER BY created_at DESC").map(mapSalary);
     var announcements = execSelect("SELECT * FROM announcements ORDER BY created_at DESC").map(mapAnnouncement);
-    return { artists: artists, contracts: contracts, evaluations: evaluations, stores: stores, salaries: salaries, announcements: announcements };
+    var reserveArtists = execSelect("SELECT * FROM reserve_artists WHERE COALESCE(status,'') != '-1'").map(mapReserveArtist);
+    return { artists: artists, contracts: contracts, evaluations: evaluations, stores: stores, salaries: salaries, announcements: announcements, reserveArtists: reserveArtists };
   }
 
   function addArtist(artistData) {
@@ -467,12 +469,135 @@ var CapDB = (function() {
     };
   }
 
+  function mapReserveArtist(a) {
+    return {
+      id: a.id, name: a.name,
+      avatar: a.avatar || '',
+      gender: a.gender || '',
+      age: a.age || 0,
+      height: a.height || '',
+      region: a.region || '',
+      position: (function() {
+        try { return JSON.parse(a.positions || '[]').join(', '); } catch(_) { return a.positions || ''; }
+      })(),
+      level: a.business_level || 'C级',
+      dailySalary: a.daily_salary || 0,
+      phone: a.phone || '',
+      status: a.status || '待定',
+      evaluator: a.evaluator || '',
+      evaluationContent: a.evaluation_content || '',
+      experience: a.experience || '',
+      photos: a.photos || '[]',
+      videos: a.videos || '[]',
+      createdAt: a.created_at ? a.created_at.slice(0, 19) : '',
+      updatedAt: a.updated_at ? a.updated_at.slice(0, 19) : ''
+    };
+  }
+
+  function addReserveArtist(data) {
+    var posJson = JSON.stringify(
+      (data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; })
+    );
+    var result = query(
+      "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, status, evaluator, evaluation_content, experience) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      [data.name, data.avatar || '', data.gender || '', data.age || 0, data.height || '', data.region || '',
+       posJson, data.level || 'C级', data.dailySalary || 0, data.phone || '', data.status || '待定',
+       data.evaluator || '', data.evaluationContent || '', data.experience || '']
+    );
+    return { ok: true, data: { id: result.lastInsertRowid } };
+  }
+
+  function updateReserveArtist(data) {
+    var posJson = JSON.stringify(
+      (data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; })
+    );
+    query(
+      "UPDATE reserve_artists SET name=?, avatar=?, gender=?, age=?, height=?, region=?, positions=?, business_level=?, daily_salary=?, phone=?, status=?, evaluator=?, evaluation_content=?, experience=?, updated_at=datetime('now','localtime') WHERE id=?",
+      [data.name, data.avatar || '', data.gender || '', data.age || 0, data.height || '', data.region || '',
+       posJson, data.level || 'C级', data.dailySalary || 0, data.phone || '', data.status || '待定',
+       data.evaluator || '', data.evaluationContent || '', data.experience || '', data.id]
+    );
+    return { ok: true };
+  }
+
+  function deleteReserveArtist(id) {
+    query("UPDATE reserve_artists SET status = '-1' WHERE id = ?", [id]);
+    return { ok: true };
+  }
+
+  function saveReserveArtistPhotos(id, photosJson) {
+    query("UPDATE reserve_artists SET photos=?, updated_at=datetime('now','localtime') WHERE id=?", [photosJson, id]);
+    return { ok: true };
+  }
+
+  function saveReserveArtistVideos(id, videosJson) {
+    query("UPDATE reserve_artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?", [videosJson, id]);
+    return { ok: true };
+  }
+
+  function saveReserveArtistExperience(id, experience) {
+    query("UPDATE reserve_artists SET experience=?, updated_at=datetime('now','localtime') WHERE id=?", [experience || '', id]);
+    return { ok: true };
+  }
+
+  function saveReserveVideo(id, dataUrl, fileName) {
+    var matches = dataUrl.match(/^data:video\/(\w+);base64,(.+)$/);
+    if (!matches) throw new Error('无效的视频格式');
+    var ext = matches[1];
+    if (ext === 'quicktime') ext = 'mov';
+    var videoId = 'rv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+    var rows = query('SELECT videos FROM reserve_artists WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) throw new Error('储备艺人不存在');
+    var videos = [];
+    try { videos = JSON.parse(rows[0].videos || '[]'); } catch(_) {}
+    var base64Data = matches[2];
+    videos.push({
+      id: videoId,
+      fileName: fileName,
+      serverPath: '',
+      localPath: dataUrl,
+      size: Math.round(base64Data.length * 3 / 4),
+      mimeType: 'video/' + ext,
+      uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    });
+    query("UPDATE reserve_artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?", [JSON.stringify(videos), id]);
+    return { ok: true, path: dataUrl };
+  }
+
+  function deleteReserveVideo(id, videoId) {
+    var rows = query('SELECT videos FROM reserve_artists WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) return { ok: true };
+    var videos = [];
+    try { videos = JSON.parse(rows[0].videos || '[]'); } catch(_) {}
+    var remaining = videos.filter(function(v) { return v.id !== videoId; });
+    query("UPDATE reserve_artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?", [JSON.stringify(remaining), id]);
+    return { ok: true };
+  }
+
+  function batchAddReserveArtists(list) {
+    var count = 0;
+    list.forEach(function(item) {
+      var posJson = JSON.stringify(
+        (item.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; })
+      );
+      query(
+        "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, status, evaluator, evaluation_content) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [item.name || '', '', item.gender || '', parseInt(item.age) || 0, item.height || '', item.region || '',
+         posJson, item.level || 'C级', parseFloat(item.dailySalary) || 0, item.phone || '',
+         item.status || '待定', item.evaluator || '', item.evaluationContent || '']
+      );
+      count++;
+    });
+    return { ok: true, data: { count: count } };
+  }
+
   function resetAllData() {
     query("DELETE FROM salaries");
     query("DELETE FROM evaluations");
     query("DELETE FROM contracts");
     query("DELETE FROM announcements");
     query("UPDATE artists SET status = '-1'");
+    query("UPDATE reserve_artists SET status = '-1'");
     return { ok: true };
   }
 
@@ -494,6 +619,15 @@ var CapDB = (function() {
     saveAvatar: saveAvatar,
     resetAllData: resetAllData,
     addAnnouncement: addAnnouncement,
-    deleteAnnouncement: deleteAnnouncement
+    deleteAnnouncement: deleteAnnouncement,
+    addReserveArtist: addReserveArtist,
+    updateReserveArtist: updateReserveArtist,
+    deleteReserveArtist: deleteReserveArtist,
+    saveReserveArtistPhotos: saveReserveArtistPhotos,
+    saveReserveArtistVideos: saveReserveArtistVideos,
+    saveReserveArtistExperience: saveReserveArtistExperience,
+    saveReserveVideo: saveReserveVideo,
+    deleteReserveVideo: deleteReserveVideo,
+    batchAddReserveArtists: batchAddReserveArtists
   };
 })();
