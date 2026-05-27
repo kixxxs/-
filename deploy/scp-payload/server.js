@@ -364,6 +364,149 @@ app.get('/api/videos/stream/:artistId/:videoId', function(req, res) {
     }
 });
 
+app.get('/api/reserve-videos/stream/:id/:videoId', function(req, res) {
+    try {
+        var id = parseInt(req.params.id, 10);
+        var videoId = req.params.videoId;
+        var video = db.getReserveVideoStreamInfo(id, videoId);
+        if (!video || !video.serverPath) {
+            return res.status(404).json({ ok: false, error: '视频不存在' });
+        }
+        var filePath = path.join(__dirname, 'server', 'src', video.serverPath);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ ok: false, error: '视频文件不存在' });
+        }
+        var stat = fs.statSync(filePath);
+        var fileSize = stat.size;
+        var contentType = video.mimeType || 'video/mp4';
+        var range = req.headers.range;
+        if (range) {
+            var parts = range.replace(/bytes=/, '').split('-');
+            var start = parseInt(parts[0], 10);
+            var end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            if (start >= fileSize) {
+                res.status(416).set('Content-Range', 'bytes */' + fileSize);
+                return res.end();
+            }
+            var chunkSize = (end - start) + 1;
+            var stream = fs.createReadStream(filePath, { start: start, end: end });
+            res.status(206).set({
+                'Content-Range': 'bytes ' + start + '-' + end + '/' + fileSize,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunkSize,
+                'Content-Type': contentType
+            });
+            stream.pipe(res);
+        } else {
+            res.status(200).set({
+                'Content-Length': fileSize,
+                'Content-Type': contentType,
+                'Accept-Ranges': 'bytes'
+            });
+            fs.createReadStream(filePath).pipe(res);
+        }
+    } catch(err) {
+        if (!res.headersSent) {
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    }
+});
+
+// ===== 储备艺人 API =====
+
+app.post('/api/reserve-artists', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var result = db.addReserveArtist(req.body);
+        broadcast('reserve-artist-added', { id: result.id });
+        res.json({ ok: true, data: { id: result.id } });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.put('/api/reserve-artists/:id', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        req.body.id = parseInt(req.params.id, 10);
+        db.updateReserveArtist(req.body);
+        broadcast('reserve-artist-updated', { id: req.body.id });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.delete('/api/reserve-artists/:id', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.deleteReserveArtist(parseInt(req.params.id, 10));
+        broadcast('reserve-artist-deleted', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.put('/api/reserve-artists/:id/photos', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.saveReservePhotos(parseInt(req.params.id, 10), req.body.photos || '[]');
+        broadcast('reserve-artist-updated', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.put('/api/reserve-artists/:id/videos', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.saveReserveVideos(parseInt(req.params.id, 10), req.body.videos || '[]');
+        broadcast('reserve-artist-updated', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.put('/api/reserve-artists/:id/experience', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.saveReserveExperience(parseInt(req.params.id, 10), req.body.experience || '');
+        broadcast('reserve-artist-updated', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.post('/api/reserve-artists/batch', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var result = db.batchAddReserveArtists(req.body);
+        broadcast('reserve-artist-batch-added', { count: result.count });
+        res.json({ ok: true, data: { count: result.count } });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.post('/api/reserve-artists/:id/videos/upload', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var dataUrl = req.body.dataUrl;
+        if (!dataUrl || !dataUrl.startsWith('data:video/')) return res.json({ ok: false, error: '无效的视频格式' });
+        var result = db.saveReserveVideo(parseInt(req.params.id, 10), dataUrl, req.body.fileName || '');
+        broadcast('reserve-artist-updated', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true, video: result });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.delete('/api/reserve-artists/:id/videos/:videoId', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.deleteReserveVideo(parseInt(req.params.id, 10), req.params.videoId);
+        broadcast('reserve-artist-updated', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
 // ===== 音乐部文件公告 =====
 
 app.get('/api/announcements', authMiddleware, function(req, res) {

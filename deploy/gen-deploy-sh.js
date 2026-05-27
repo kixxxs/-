@@ -6,7 +6,8 @@ var files = [
   { local: 'server/database.js', remote: '/app/server/database.js' },
   { local: 'src/cap-db.js', remote: '/app/src/cap-db.js' },
   { local: 'src/index.html', remote: '/app/src/index.html' },
-  { local: 'package.json', remote: '/app/package.json' }
+  { local: 'package.json', remote: '/app/package.json' },
+  { local: 'scripts/convert-existing-videos.sh', remote: '/app/convert-existing-videos.sh' }
 ];
 
 var lines = [];

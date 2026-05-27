@@ -2,6 +2,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 
 var DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'db', 'db', 'artist_data.db');
 
@@ -41,6 +42,7 @@ function createTables() {
   try { db.exec("ALTER TABLE salaries ADD COLUMN travel_fee REAL DEFAULT 0"); } catch(_) {}
   try { db.exec("ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0"); } catch(_) {}
   db.exec("CREATE TABLE IF NOT EXISTS announcements (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    title TEXT NOT NULL DEFAULT '',\n    file_name TEXT DEFAULT '',\n    file_path TEXT DEFAULT '',\n    created_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
+  db.exec("CREATE TABLE IF NOT EXISTS reserve_artists (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    avatar TEXT DEFAULT '',\n    gender TEXT DEFAULT '',\n    age INTEGER DEFAULT 0,\n    height TEXT DEFAULT '',\n    region TEXT DEFAULT '',\n    positions TEXT DEFAULT '[]',\n    business_level TEXT DEFAULT 'C级',\n    daily_salary REAL DEFAULT 0,\n    phone TEXT DEFAULT '',\n    status TEXT DEFAULT '待定',\n    evaluator TEXT DEFAULT '',\n    evaluation_content TEXT DEFAULT '',\n    experience TEXT DEFAULT '',\n    photos TEXT DEFAULT '[]',\n    videos TEXT DEFAULT '[]',\n    created_at TEXT DEFAULT (datetime('now','localtime')),\n    updated_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
 }
 
 function syncStores() {
@@ -114,6 +116,7 @@ function getAllData() {
   var salaries = db.prepare('SELECT * FROM salaries ORDER BY created_at DESC').all();
 
   var announcements = db.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all();
+  var reserveArtists = db.prepare("SELECT * FROM reserve_artists WHERE COALESCE(status,'') != '-1'").all();
 
   return {
     artists: (artists || []).map(mapArtist),
@@ -121,7 +124,8 @@ function getAllData() {
     evaluations: (evaluations || []).map(mapEvaluation),
     stores: (stores || []).map(function(s) { return s.name; }),
     salaries: (salaries || []).map(mapSalary),
-    announcements: (announcements || []).map(mapAnnouncement)
+    announcements: (announcements || []).map(mapAnnouncement),
+    reserveArtists: (reserveArtists || []).map(mapReserveArtist)
   };
 }
 
@@ -289,6 +293,23 @@ function mapAnnouncement(a) {
   };
 }
 
+function mapReserveArtist(a) {
+  return {
+    id: a.id, name: a.name,
+    avatar: a.avatar || '', gender: a.gender || '',
+    age: a.age || 0, height: a.height || '', region: a.region || '',
+    position: (function() {
+      try { return JSON.parse(a.positions || '[]').join(', '); } catch(_) { return a.positions || ''; }
+    })(),
+    level: a.business_level || 'C级', dailySalary: a.daily_salary || 0,
+    phone: a.phone || '', status: a.status || '待定',
+    evaluator: a.evaluator || '', evaluationContent: a.evaluation_content || '',
+    experience: a.experience || '', photos: a.photos || '[]', videos: a.videos || '[]',
+    createdAt: a.created_at ? a.created_at.slice(0, 19) : '',
+    updatedAt: a.updated_at ? a.updated_at.slice(0, 19) : ''
+  };
+}
+
 function saveAvatar(dataUrl, artistName) {
   var matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
   if (!matches) throw new Error('无效的图片格式');
@@ -356,6 +377,34 @@ function mapSalary(s) {
   };
 }
 
+function convertToH264(filePath) {
+  try {
+    var codec = execSync(
+      'ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "' + filePath + '"',
+      { encoding: 'utf8', timeout: 10000 }
+    ).trim();
+    if (codec !== 'hevc' && codec !== 'hvc1' && codec !== 'hev1') return filePath;
+  } catch(e) {
+    // ffprobe not available — skip conversion
+    return filePath;
+  }
+
+  var tmpPath = filePath.replace(/\.\w+$/, '_conv.mp4');
+  try {
+    execSync(
+      'ffmpeg -i "' + filePath + '" -c:v libx264 -c:a aac -movflags +faststart -y "' + tmpPath + '"',
+      { encoding: 'utf8', timeout: 300000, stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+    fs.unlinkSync(filePath);
+    fs.renameSync(tmpPath, filePath);
+    return filePath;
+  } catch(e) {
+    // ffmpeg failed — keep original
+    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    return filePath;
+  }
+}
+
 function saveArtistVideo(artistId, dataUrl, fileName) {
   var matches = dataUrl.match(/^data:video\/(\w+);base64,(.+)$/);
   if (!matches) throw new Error('无效的视频格式');
@@ -366,7 +415,10 @@ function saveArtistVideo(artistId, dataUrl, fileName) {
   if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
   var videoId = 'v_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
   var safeName = videoId + '.' + ext;
-  fs.writeFileSync(path.join(videoDir, safeName), buffer);
+  var fullPath = path.join(videoDir, safeName);
+  fs.writeFileSync(fullPath, buffer);
+  convertToH264(fullPath);
+  var fileSize = fs.statSync(fullPath).size;
   var relativePath = 'assets/videos/' + safeName;
   var row = db.prepare('SELECT videos FROM artists WHERE id = ?').get(artistId);
   if (!row) throw new Error('艺人不存在');
@@ -376,8 +428,8 @@ function saveArtistVideo(artistId, dataUrl, fileName) {
     id: videoId,
     fileName: fileName,
     serverPath: relativePath,
-    size: buffer.length,
-    mimeType: 'video/' + ext,
+    size: fileSize,
+    mimeType: 'video/mp4',
     uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
   });
   db.prepare("UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?")
@@ -420,6 +472,120 @@ function getVideoStreamInfo(artistId, videoId) {
   return null;
 }
 
+function saveReserveVideo(id, dataUrl, fileName) {
+  var matches = dataUrl.match(/^data:video\/(\w+);base64,(.+)$/);
+  if (!matches) throw new Error('无效的视频格式');
+  var ext = matches[1];
+  if (ext === 'quicktime') ext = 'mov';
+  var buffer = Buffer.from(matches[2], 'base64');
+  var videoDir = path.join(__dirname, 'src', 'assets', 'videos');
+  if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
+  var videoId = 'rv_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+  var safeName = videoId + '.' + ext;
+  var fullPath = path.join(videoDir, safeName);
+  fs.writeFileSync(fullPath, buffer);
+  convertToH264(fullPath);
+  var fileSize = fs.statSync(fullPath).size;
+  var relativePath = 'assets/videos/' + safeName;
+  var row = db.prepare('SELECT videos FROM reserve_artists WHERE id = ?').get(id);
+  if (!row) throw new Error('储备艺人不存在');
+  var videos = [];
+  try { videos = JSON.parse(row.videos || '[]'); } catch(_) {}
+  videos.push({
+    id: videoId,
+    fileName: fileName,
+    serverPath: relativePath,
+    size: fileSize,
+    mimeType: 'video/mp4',
+    uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+  });
+  db.prepare("UPDATE reserve_artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?")
+    .run(JSON.stringify(videos), id);
+  return { id: videoId, path: relativePath, size: fileSize };
+}
+
+function deleteReserveVideo(id, videoId) {
+  var row = db.prepare('SELECT videos FROM reserve_artists WHERE id = ?').get(id);
+  if (!row) return;
+  var videos = [];
+  try { videos = JSON.parse(row.videos || '[]'); } catch(_) {}
+  var remaining = [];
+  var deleted = null;
+  for (var i = 0; i < videos.length; i++) {
+    if (videos[i].id === videoId) { deleted = videos[i]; }
+    else { remaining.push(videos[i]); }
+  }
+  if (deleted && deleted.serverPath) {
+    var fullPath = path.join(__dirname, 'src', deleted.serverPath);
+    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  }
+  db.prepare("UPDATE reserve_artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?")
+    .run(JSON.stringify(remaining), id);
+}
+
+function getReserveVideoStreamInfo(id, videoId) {
+  var row = db.prepare('SELECT videos FROM reserve_artists WHERE id = ?').get(id);
+  if (!row) return null;
+  var videos = [];
+  try { videos = JSON.parse(row.videos || '[]'); } catch(_) {}
+  for (var i = 0; i < videos.length; i++) {
+    if (videos[i].id === videoId) return videos[i];
+  }
+  return null;
+}
+
+// ===== Reserve Artist CRUD =====
+
+function addReserveArtist(data) {
+  var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
+  var r = db.prepare(
+    "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, status, evaluator, evaluation_content, experience) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).run(data.name, data.avatar || '', data.gender || '', data.age || 0, data.height || '', data.region || '',
+    posJson, data.level || 'C级', data.dailySalary || 0, data.phone || '', data.status || '待定',
+    data.evaluator || '', data.evaluationContent || '', data.experience || '');
+  return { id: r.lastInsertRowid };
+}
+
+function updateReserveArtist(data) {
+  var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
+  db.prepare(
+    "UPDATE reserve_artists SET name=?, avatar=?, gender=?, age=?, height=?, region=?, positions=?, business_level=?, daily_salary=?, phone=?, status=?, evaluator=?, evaluation_content=?, experience=?, updated_at=datetime('now','localtime') WHERE id=?"
+  ).run(data.name, data.avatar || '', data.gender || '', data.age || 0, data.height || '', data.region || '',
+    posJson, data.level || 'C级', data.dailySalary || 0, data.phone || '', data.status || '待定',
+    data.evaluator || '', data.evaluationContent || '', data.experience || '', data.id);
+}
+
+function deleteReserveArtist(id) {
+  db.prepare("UPDATE reserve_artists SET status = '-1' WHERE id = ?").run(id);
+}
+
+function saveReservePhotos(id, photosJson) {
+  db.prepare("UPDATE reserve_artists SET photos=?, updated_at=datetime('now','localtime') WHERE id=?").run(photosJson || '[]', id);
+}
+
+function saveReserveVideos(id, videosJson) {
+  db.prepare("UPDATE reserve_artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?").run(videosJson || '[]', id);
+}
+
+function saveReserveExperience(id, experience) {
+  db.prepare("UPDATE reserve_artists SET experience=?, updated_at=datetime('now','localtime') WHERE id=?").run(experience || '', id);
+}
+
+function batchAddReserveArtists(list) {
+  var count = 0;
+  var stmt = db.prepare(
+    "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, status, evaluator, evaluation_content) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  );
+  list.forEach(function(item) {
+    var posJson = JSON.stringify((item.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
+    stmt.run(item.name || '', '', item.gender || '', parseInt(item.age) || 0, item.height || '', item.region || '',
+      posJson, item.level || 'C级', parseFloat(item.dailySalary) || 0, item.phone || '',
+      item.status || '待定', item.evaluator || '', item.evaluationContent || '');
+    count++;
+  });
+  return { count: count };
+}
+
 module.exports = {
   init,
   getAllData,
@@ -429,5 +595,10 @@ module.exports = {
   saveArtistPhotos, saveAvatar,
   resetAllData,
   addAnnouncement, deleteAnnouncement, getAnnouncementFileBase64,
-  saveArtistVideo, saveArtistVideos, deleteArtistVideo, getVideoStreamInfo
+  saveArtistVideo, saveArtistVideos, deleteArtistVideo, getVideoStreamInfo,
+  getReserveVideoStreamInfo,
+  saveReserveVideo, deleteReserveVideo,
+  addReserveArtist, updateReserveArtist, deleteReserveArtist,
+  saveReservePhotos, saveReserveVideos, saveReserveExperience,
+  batchAddReserveArtists
 };

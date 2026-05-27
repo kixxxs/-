@@ -66,6 +66,10 @@
             --mobile-nav-bg: rgba(28,28,33,0.92);
             --mobile-nav-border: rgba(255,255,255,0.06);
             --mobile-nav-shadow: 0 -1px 20px rgba(0,0,0,0.35);
+            --input-bg: #1C1C21;
+            --bg-secondary: #1C1C21;
+            color-scheme: dark;
+            scrollbar-color: var(--border-color) var(--surface-bg);
         }
 
         /* ---- Morandi (legacy) ---- */
@@ -109,6 +113,9 @@
             --mobile-nav-bg: rgba(250,248,245,0.92);
             --mobile-nav-border: rgba(0,0,0,0.08);
             --mobile-nav-shadow: 0 -1px 16px rgba(0,0,0,0.06);
+            --input-bg: #FAF8F5;
+            --bg-secondary: #EDE8E0;
+            scrollbar-color: var(--border-color) var(--surface-bg);
         }
 
         /* ---- Orange (legacy) ---- */
@@ -152,6 +159,9 @@
             --mobile-nav-bg: rgba(255,255,255,0.92);
             --mobile-nav-border: rgba(0,0,0,0.06);
             --mobile-nav-shadow: 0 -1px 16px rgba(0,0,0,0.06);
+            --input-bg: #FFFFFF;
+            --bg-secondary: #FFF8F3;
+            scrollbar-color: var(--border-color) var(--surface-bg);
         }
 
         /* ---- Base Reset ---- */
@@ -956,7 +966,7 @@
             /* Capacitor 移动端增强 */
             * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
             input, textarea, select { -webkit-user-select: text; user-select: text; }
-            body { overscroll-behavior: none; overscroll-behavior-x: none; -webkit-overflow-scrolling: touch; }
+            body { -webkit-overflow-scrolling: touch; }
             .modal-body { max-height: 60vh; overflow-y: auto; }
             .table td .btn { min-width: 36px; min-height: 36px; margin: 2px; border-radius: 8px; }
             .app-container { padding-top: calc(8px + var(--safe-area-top)); }
@@ -1189,6 +1199,10 @@
                 <span class="v2-nav-icon"><i class="fas fa-star"></i></span>
                 <span class="v2-nav-label">艺人评价</span>
             </button>
+            <button class="v2-nav-btn" id="reserve-tab" data-bs-toggle="tab" data-bs-target="#reserve" type="button" role="tab" aria-controls="reserve" aria-selected="false">
+                <span class="v2-nav-icon"><i class="fas fa-address-book"></i></span>
+                <span class="v2-nav-label">艺人储备库</span>
+            </button>
             <button class="v2-nav-btn" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile" type="button" role="tab" aria-controls="profile" aria-selected="false">
                 <span class="v2-nav-icon"><i class="fas fa-user"></i></span>
                 <span class="v2-nav-label">我的</span>
@@ -1216,6 +1230,10 @@
             <button class="mobile-nav-btn" data-tab-target="#evaluation">
                 <span class="mobile-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
                 <span class="mobile-nav-label">评价</span>
+            </button>
+            <button class="mobile-nav-btn" data-tab-target="#reserve">
+                <span class="mobile-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+                <span class="mobile-nav-label">储备</span>
             </button>
             <button class="mobile-nav-btn" data-tab-target="#profile">
                 <span class="mobile-nav-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
@@ -1635,6 +1653,87 @@
                                     </tr>
                                 </thead>
                                 <tbody id="evaluationList">
+                                    <!-- 动态生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 艺人储备库 -->
+            <div class="tab-pane fade" id="reserve" role="tabpanel" aria-labelledby="reserve-tab">
+                <div class="content-area">
+                    <h2 class="section-title">艺人储备库</h2>
+
+                    <!-- 统计卡片 -->
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="card-title">储备艺人总数</div>
+                                <div class="card-value" id="reserveTotalCount">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="card-title">B+级以上艺人数</div>
+                                <div class="card-value" id="reserveBPlusCount">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="card-title">待定艺人数</div>
+                                <div class="card-value" id="reservePendingCount">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="card-title">已安排艺人数</div>
+                                <div class="card-value" id="reserveArrangedCount">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="action-buttons">
+                        <button class="btn btn-success me-2 admin-only" onclick="openAddReserveArtistModal()">
+                            <i class="fas fa-plus me-2"></i>添加艺人
+                        </button>
+                        <button class="btn btn-info me-2 admin-only" onclick="openReserveBatchUploadModal()">
+                            <i class="fas fa-upload me-2"></i>批量上传
+                        </button>
+                        <div class="artist-search-wrapper">
+                            <i class="fas fa-search artist-search-icon"></i>
+                            <input type="text" id="reserveSearchInput" class="artist-search-input"
+                                placeholder="搜索姓名、岗位、地区..." oninput="filterReserveArtists()">
+                        </div>
+                        <select id="reserveStatusFilter" class="form-select" style="width:auto;min-width:120px;margin-left:8px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:6px;padding:0 10px;" onchange="filterReserveArtists()">
+                            <option value="">全部状态</option>
+                            <option value="待定">待定</option>
+                            <option value="已安排">已安排</option>
+                        </select>
+                    </div>
+
+                    <!-- 艺人列表 -->
+                    <div class="table-container">
+                        <div class="table-scroll">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>头像</th>
+                                        <th>姓名</th>
+                                        <th>岗位</th>
+                                        <th>性别</th>
+                                        <th>年龄</th>
+                                        <th>身高</th>
+                                        <th>地区</th>
+                                        <th>等级</th>
+                                        <th>日薪</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reserveArtistsList">
                                     <!-- 动态生成 -->
                                 </tbody>
                             </table>
@@ -2090,18 +2189,18 @@
                 </div>
                 <!-- 右侧：详细信息 -->
                 <div style="flex:1;min-width:280px;">
-                    <table style="width:100%;border-collapse:collapse;">
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);width:90px;">姓名</td><td style="padding:8px 0;" id="detailName2"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">业务等级</td><td style="padding:8px 0;" id="detailLevel2"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">年龄</td><td style="padding:8px 0;" id="detailAge"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">综合评价</td><td style="padding:8px 0;font-weight:600;" id="detailScore"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">日薪标准</td><td style="padding:8px 0;" id="detailSalary"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">所在门店</td><td style="padding:8px 0;" id="detailStore"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">联系方式</td><td style="padding:8px 0;" id="detailPhone"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">岗位</td><td style="padding:8px 0;" id="detailPosition"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">签约状态</td><td style="padding:8px 0;" id="detailContractStatus"></td></tr>
-                        <tr><td style="padding:8px 12px;color:var(--text-muted);">状态</td><td style="padding:8px 0;" id="detailStatus"></td></tr>
-                    </table>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:15px;">
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">姓名</div><div id="detailName2"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">业务等级</div><div id="detailLevel2"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">年龄</div><div id="detailAge"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">综合评价</div><div id="detailScore" style="font-weight:600;"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">日薪标准</div><div id="detailSalary"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">所在门店</div><div id="detailStore"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">联系方式</div><div id="detailPhone"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">岗位</div><div id="detailPosition"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">签约状态</div><div id="detailContractStatus"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">状态</div><div id="detailStatus"></div></div>
+                    </div>
                 </div>
             </div>
             <!-- 形象照区域 -->
@@ -2143,11 +2242,223 @@
     </div>
 
     <!-- 视频播放器 -->
-    <div id="videoPlayerModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;align-items:center;justify-content:center;" onclick="closeVideoPlayer()">
+    <div id="videoPlayerModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;align-items:center;justify-content:center;flex-direction:column;" onclick="closeVideoPlayer()">
         <span style="position:absolute;top:20px;right:30px;color:#fff;font-size:40px;cursor:pointer;z-index:10;">&times;</span>
-        <video id="videoPlayer" controls playsinline style="max-width:95%;max-height:90%;" onclick="event.stopPropagation();">
+        <video id="videoPlayer" controls playsinline style="max-width:95%;max-height:80%;" onclick="event.stopPropagation();">
             您的浏览器不支持视频播放
         </video>
+        
+    </div>
+
+    <!-- 添加/编辑储备艺人弹窗 -->
+    <div class="modal" id="addReserveArtistModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="addReserveArtistModalTitle">添加储备艺人</h2>
+                <span class="close-btn" onclick="closeModal('addReserveArtistModal')">&times;</span>
+            </div>
+            <form id="addReserveArtistForm" novalidate>
+                <input type="hidden" id="editReserveArtistId" value="">
+                <input type="hidden" id="reserveArtistAvatar" value="">
+                <div class="form-group">
+                    <label>头像</label>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <img id="reserveAvatarPreview" src="" alt="头像预览" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid #ddd;display:none;">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('reserveAvatarFileInput').click();">选择照片</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="reserveAvatarClearBtn" style="display:none;" onclick="clearReserveAvatar();">清除</button>
+                        <input type="file" id="reserveAvatarFileInput" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;" onchange="handleReserveAvatarSelect(event)">
+                    </div>
+                    <small class="text-muted">支持 JPG、PNG 格式</small>
+                </div>
+                <div class="form-group">
+                    <label>姓名</label>
+                    <input type="text" id="reserveArtistName" required>
+                </div>
+                <div class="form-group">
+                    <label>岗位（可多选）</label>
+                    <div id="reservePositionCheckboxGroup" style="display:flex;flex-wrap:wrap;gap:4px 16px;padding:8px 0;">
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="男歌"> 男歌</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="女歌"> 女歌</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="弹唱"> 弹唱</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="键盘"> 键盘</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="吉他"> 吉他</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="鼓"> 鼓</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="贝斯"> 贝斯</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="DJ"> DJ</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="控台"> 控台</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:normal;"><input type="checkbox" name="reserveArtistPosition" value="其他"> 其他</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>性别</label>
+                    <select id="reserveArtistGender" required>
+                        <option value="">请选择</option>
+                        <option value="男">男</option>
+                        <option value="女">女</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>年龄</label>
+                    <input type="number" id="reserveArtistAge" min="0" max="100">
+                </div>
+                <div class="form-group">
+                    <label>身高</label>
+                    <input type="text" id="reserveArtistHeight" placeholder="如：175cm">
+                </div>
+                <div class="form-group">
+                    <label>地区</label>
+                    <input type="text" id="reserveArtistRegion" placeholder="如：深圳">
+                </div>
+                <div class="form-group">
+                    <label>等级</label>
+                    <select id="reserveArtistLevel" required>
+                        <option value="S级">S级</option>
+                        <option value="A+级">A+级</option>
+                        <option value="A级">A级</option>
+                        <option value="B+级">B+级</option>
+                        <option value="B级">B级</option>
+                        <option value="C级">C级</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>日薪</label>
+                    <input type="number" id="reserveArtistDailySalary" min="0" step="50">
+                </div>
+                <div class="form-group">
+                    <label>联系方式</label>
+                    <input type="text" id="reserveArtistPhone" placeholder="手机号码">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select id="reserveArtistStatus" required>
+                        <option value="待定">待定</option>
+                        <option value="已安排">已安排</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>评价人</label>
+                    <input type="text" id="reserveArtistEvaluator">
+                </div>
+                <div class="form-group">
+                    <label>评价内容</label>
+                    <textarea id="reserveArtistEvaluationContent" rows="3" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">添加</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 储备艺人详情弹窗 -->
+    <div class="modal" id="reserveArtistDetailModal">
+        <div class="modal-content" style="max-width:800px;">
+            <div class="modal-header">
+                <h2 id="reserveArtistDetailTitle">艺人详情</h2>
+                <span class="close-btn" onclick="closeModal('reserveArtistDetailModal')">&times;</span>
+            </div>
+            <div style="display:flex;gap:30px;padding:20px;flex-wrap:wrap;">
+                <!-- 左侧：头像 + 基本信息 -->
+                <div style="flex:0 0 200px;text-align:center;">
+                    <img id="reserveDetailAvatar" src="" alt="头像" style="width:180px;height:180px;border-radius:50%;object-fit:cover;border:3px solid var(--primary-color);margin-bottom:12px;">
+                    <div style="font-size:20px;font-weight:700;color:var(--text-color);" id="reserveDetailName"></div>
+                    <div><span class="badge" id="reserveDetailLevel" style="font-size:14px;padding:4px 12px;margin-top:4px;"></span></div>
+                </div>
+                <!-- 右侧：详细信息 -->
+                <div style="flex:1;min-width:280px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:15px;">
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">姓名</div><div id="reserveDetailName2"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">岗位</div><div id="reserveDetailPosition"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">性别</div><div id="reserveDetailGender"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">年龄</div><div id="reserveDetailAge"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">身高</div><div id="reserveDetailHeight"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">地区</div><div id="reserveDetailRegion"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">等级</div><div id="reserveDetailLevel2"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">日薪</div><div id="reserveDetailSalary"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">联系方式</div><div id="reserveDetailPhone"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">状态</div><div id="reserveDetailStatus"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">评价人</div><div id="reserveDetailEvaluator"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">评价内容</div><div id="reserveDetailEvaluationContent"></div></div>
+                    </div>
+                </div>
+            </div>
+            <!-- 演出经历 -->
+            <div style="padding:0 20px 20px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                    <h4 style="margin:0;">演出经历</h4>
+                    <button type="button" class="btn btn-sm btn-outline-primary admin-only" onclick="saveReserveExperience()">
+                        <i class="fas fa-save me-1"></i>保存
+                    </button>
+                </div>
+                <textarea id="reserveExperienceTextarea" rows="4" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);resize:vertical;" placeholder="输入演出经历..."></textarea>
+            </div>
+            <!-- 形象照区域 -->
+            <div style="padding:0 20px 20px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                    <h4 style="margin:0;">形象照</h4>
+                    <button type="button" class="btn btn-sm btn-outline-primary admin-only" onclick="document.getElementById('reserveDetailPhotoInput').click();">
+                        <i class="fas fa-plus me-1"></i>上传照片
+                    </button>
+                    <input type="file" id="reserveDetailPhotoInput" accept="image/jpeg,image/png" style="display:none;" onchange="uploadReservePhoto(event)">
+                </div>
+                <small class="text-muted">支持 JPG、PNG 格式，单张不超过 10MB</small>
+                <div id="reservePhotoGallery" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;min-height:60px;">
+                    <div style="color:#aaa;padding:20px;">暂无形象照</div>
+                </div>
+            </div>
+            <!-- 视频区域 -->
+            <div style="padding:0 20px 20px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                    <h4 style="margin:0;">相关视频</h4>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span id="reserveUploadVideoProgress" style="font-size:12px;color:var(--primary-color);display:none;">0%</span>
+                        <button type="button" id="reserveUploadVideoBtn" class="btn btn-sm btn-outline-primary admin-only" onclick="document.getElementById('reserveDetailVideoInput').click();">
+                            <i class="fas fa-video me-1"></i>上传视频
+                        </button>
+                    </div>
+                    <input type="file" id="reserveDetailVideoInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo" style="display:none;" onchange="uploadReserveVideo(event)">
+                </div>
+                <div id="reserveUploadVideoProgressBar" style="display:none;height:4px;background:var(--border-color);border-radius:2px;margin-bottom:8px;overflow:hidden;">
+                    <div id="reserveUploadVideoProgressBarInner" style="height:100%;background:var(--primary-color);width:0%;transition:width 0.2s;"></div>
+                </div>
+                <small class="text-muted">支持 MP4、WebM、MOV 格式，单文件不超过 200MB</small>
+                <div id="reserveVideoGallery" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;min-height:60px;">
+                    <div style="color:var(--text-muted);padding:20px;">暂无视频</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 储备艺人批量上传弹窗 -->
+    <div class="modal" id="reserveBatchUploadModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>批量上传储备艺人</h2>
+                <span class="close-btn" onclick="closeModal('reserveBatchUploadModal')">&times;</span>
+            </div>
+            <div style="padding:20px;">
+                <div style="margin-bottom:16px;">
+                    <button type="button" class="btn btn-outline-primary me-2" onclick="downloadReserveTemplate()">
+                        <i class="fas fa-download me-2"></i>下载模板
+                    </button>
+                    <button type="button" class="btn btn-outline-success" onclick="document.getElementById('reserveBatchFileInput').click();">
+                        <i class="fas fa-file-upload me-2"></i>选择 CSV 文件
+                    </button>
+                    <input type="file" id="reserveBatchFileInput" accept=".csv" style="display:none;" onchange="handleReserveBatchFile(event)">
+                </div>
+                <small class="text-muted">模板格式：姓名,岗位,性别,年龄,身高,地区,等级,日薪,联系方式,状态,评价人,评价内容</small>
+                <div id="reserveBatchPreview" style="margin-top:16px;max-height:300px;overflow:auto;display:none;">
+                    <table class="table table-sm">
+                        <thead><tr><th>姓名</th><th>岗位</th><th>性别</th><th>地区</th><th>等级</th><th>状态</th></tr></thead>
+                        <tbody id="reserveBatchPreviewBody"></tbody>
+                    </table>
+                </div>
+                <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('reserveBatchUploadModal')">取消</button>
+                    <button type="button" class="btn btn-primary" id="reserveBatchConfirmBtn" style="display:none;" onclick="confirmReserveBatchImport()">
+                        <i class="fas fa-check me-2"></i>确认导入
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- 图片查看器（灯箱） -->
@@ -2299,7 +2610,7 @@
                 var result = await DBStorage.resetAllData();
                 if (result.ok) {
                     showToast('数据已全部清空', 'success');
-                    await loadData();
+                    await refreshData(); renderCurrentView();
                 } else {
                     showToast('清空失败：' + (result.error || '未知错误'), 'error');
                 }
@@ -2535,7 +2846,7 @@
                         updateConnectionBadge();
                         showToast('已连接到服务器', 'success');
                         // Reload data from server
-                        await loadData();
+                        await refreshData(); renderCurrentView();
                         try { initializeCharts(); } catch(e) {}
                     } else {
                         showToast('服务器验证失败: ' + (result.error || '未知错误'), 'error');
@@ -2618,8 +2929,10 @@
             _nextId: 7,
             _nextContractId: 1,
             _nextAnnouncementId: 1,
+            _nextReserveId: 1,
             salaries: [],
-            announcements: []
+            announcements: [],
+            reserveArtists: []
         };
 
         var _useMemoryStore = false;
@@ -2630,6 +2943,13 @@
             _useCapacitorStore = true;
             console.log('[启动] Capacitor 原生环境已检测到');
         }
+
+        // ===== 储备艺人状态变量 =====
+        var _currentReserveArtist = null;
+        var _currentReservePhotos = [];
+        var _currentReserveVideos = [];
+        var _reserveBatchData = [];
+        var _reservePhotoIndex = 0;
 
         const ServerStorage = {
             _base: '',
@@ -2741,6 +3061,46 @@
                     method: 'PUT',
                     body: JSON.stringify({ videos: videosJson })
                 });
+            },
+
+            // ===== 储备艺人 API =====
+            async addReserveArtist(data) {
+                return this._fetch('/api/reserve-artists', { method: 'POST', body: JSON.stringify(data) });
+            },
+
+            async updateReserveArtist(data) {
+                return this._fetch('/api/reserve-artists/' + data.id, { method: 'PUT', body: JSON.stringify(data) });
+            },
+
+            async deleteReserveArtist(id) {
+                return this._fetch('/api/reserve-artists/' + id, { method: 'DELETE' });
+            },
+
+            async saveReservePhotos(id, photosJson) {
+                return this._fetch('/api/reserve-artists/' + id + '/photos', { method: 'PUT', body: JSON.stringify({ photos: photosJson }) });
+            },
+
+            async saveReserveVideos(id, videosJson) {
+                return this._fetch('/api/reserve-artists/' + id + '/videos', { method: 'PUT', body: JSON.stringify({ videos: videosJson }) });
+            },
+
+            async saveReserveExperience(id, experience) {
+                return this._fetch('/api/reserve-artists/' + id + '/experience', { method: 'PUT', body: JSON.stringify({ experience: experience }) });
+            },
+
+            async uploadReserveVideo(id, dataUrl, fileName) {
+                return this._fetch('/api/reserve-artists/' + id + '/videos/upload', {
+                    method: 'POST',
+                    body: JSON.stringify({ dataUrl: dataUrl, fileName: fileName })
+                });
+            },
+
+            async deleteReserveVideo(id, videoId) {
+                return this._fetch('/api/reserve-artists/' + id + '/videos/' + videoId, { method: 'DELETE' });
+            },
+
+            async batchAddReserveArtists(list) {
+                return this._fetch('/api/reserve-artists/batch', { method: 'POST', body: JSON.stringify(list) });
             }
         };
 
@@ -3281,6 +3641,240 @@
                     catch(e) { return { ok: false, error: e.message }; }
                 }
                 return { ok: false, error: 'IPC 不可用' };
+            },
+
+            // ===== 储备艺人 =====
+            async addReserveArtist(data) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.addReserveArtist(data); }
+                    catch(e) { console.warn('[DBStorage] Server addReserveArtist failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.addReserveArtist(data); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) {
+                    var newRA = {
+                        id: _memoryStore._nextReserveId++,
+                        name: data.name, avatar: data.avatar || '',
+                        gender: data.gender || '', age: data.age || 0, height: data.height || '',
+                        region: data.region || '', position: data.position || '', level: data.level || 'C级',
+                        dailySalary: data.dailySalary || 0, phone: data.phone || '',
+                        status: data.status || '待定', evaluator: data.evaluator || '',
+                        evaluationContent: data.evaluationContent || '',
+                        experience: data.experience || '', photos: '[]', videos: '[]'
+                    };
+                    _memoryStore.reserveArtists.push(newRA);
+                    return { ok: true, data: { id: newRA.id } };
+                }
+                if (window.electronAPI && window.electronAPI.addReserveArtist) {
+                    try { return await window.electronAPI.addReserveArtist(data); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async updateReserveArtist(data) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.updateReserveArtist(data); }
+                    catch(e) { console.warn('[DBStorage] Server updateReserveArtist failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.updateReserveArtist(data); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) {
+                    for (var i = 0; i < _memoryStore.reserveArtists.length; i++) {
+                        if (_memoryStore.reserveArtists[i].id === data.id) {
+                            var ra = _memoryStore.reserveArtists[i];
+                            ra.name = data.name; ra.avatar = data.avatar || ''; ra.gender = data.gender || '';
+                            ra.age = data.age || 0; ra.height = data.height || ''; ra.region = data.region || '';
+                            ra.position = data.position || ''; ra.level = data.level || 'C级';
+                            ra.dailySalary = data.dailySalary || 0; ra.phone = data.phone || '';
+                            ra.status = data.status || '待定'; ra.evaluator = data.evaluator || '';
+                            ra.evaluationContent = data.evaluationContent || ''; ra.experience = data.experience || '';
+                            return { ok: true };
+                        }
+                    }
+                    return { ok: false, error: '储备艺人不存在' };
+                }
+                if (window.electronAPI && window.electronAPI.updateReserveArtist) {
+                    try { return await window.electronAPI.updateReserveArtist(data); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async deleteReserveArtist(id) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.deleteReserveArtist(id); }
+                    catch(e) { console.warn('[DBStorage] Server deleteReserveArtist failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.deleteReserveArtist(id); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) {
+                    var idx = -1;
+                    for (var i = 0; i < _memoryStore.reserveArtists.length; i++) {
+                        if (_memoryStore.reserveArtists[i].id === id) { idx = i; break; }
+                    }
+                    if (idx >= 0) { _memoryStore.reserveArtists.splice(idx, 1); }
+                    return { ok: true };
+                }
+                if (window.electronAPI && window.electronAPI.deleteReserveArtist) {
+                    try { return await window.electronAPI.deleteReserveArtist(id); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async saveReservePhotos(id, photosJson) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.saveReservePhotos(id, photosJson); }
+                    catch(e) { console.warn('[DBStorage] Server saveReservePhotos failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.saveReserveArtistPhotos(id, photosJson); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) {
+                    for (var i = 0; i < _memoryStore.reserveArtists.length; i++) {
+                        if (_memoryStore.reserveArtists[i].id === id) {
+                            _memoryStore.reserveArtists[i].photos = photosJson;
+                            return { ok: true };
+                        }
+                    }
+                    return { ok: false, error: '储备艺人不存在' };
+                }
+                if (window.electronAPI && window.electronAPI.saveReservePhotos) {
+                    try { return await window.electronAPI.saveReservePhotos(id, photosJson); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async saveReserveVideos(id, videosJson) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.saveReserveVideos(id, videosJson); }
+                    catch(e) { console.warn('[DBStorage] Server saveReserveVideos failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.saveReserveArtistVideos(id, videosJson); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) {
+                    for (var i = 0; i < _memoryStore.reserveArtists.length; i++) {
+                        if (_memoryStore.reserveArtists[i].id === id) {
+                            _memoryStore.reserveArtists[i].videos = videosJson;
+                            return { ok: true };
+                        }
+                    }
+                    return { ok: false, error: '储备艺人不存在' };
+                }
+                if (window.electronAPI && window.electronAPI.saveReserveVideos) {
+                    try { return await window.electronAPI.saveReserveVideos(id, videosJson); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async saveReserveExperience(id, experience) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.saveReserveExperience(id, experience); }
+                    catch(e) { console.warn('[DBStorage] Server saveReserveExperience failed:', e.message); return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.saveReserveArtistExperience(id, experience); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) {
+                    for (var i = 0; i < _memoryStore.reserveArtists.length; i++) {
+                        if (_memoryStore.reserveArtists[i].id === id) {
+                            _memoryStore.reserveArtists[i].experience = experience;
+                            return { ok: true };
+                        }
+                    }
+                    return { ok: false, error: '储备艺人不存在' };
+                }
+                if (window.electronAPI && window.electronAPI.saveReserveExperience) {
+                    try { return await window.electronAPI.saveReserveExperience(id, experience); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async uploadReserveVideo(id, dataUrl, fileName) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.uploadReserveVideo(id, dataUrl, fileName); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.saveReserveVideo(id, dataUrl, fileName); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (window.electronAPI && window.electronAPI.uploadReserveVideo) {
+                    try { return await window.electronAPI.uploadReserveVideo(id, dataUrl, fileName); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async deleteReserveVideo(id, videoId) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.deleteReserveVideo(id, videoId); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.deleteReserveVideo(id, videoId); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (window.electronAPI && window.electronAPI.deleteReserveVideo) {
+                    try { return await window.electronAPI.deleteReserveVideo(id, videoId); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
+            },
+
+            async batchAddReserveArtists(list) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.batchAddReserveArtists(list); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                this._initMemoryIfNeeded();
+                if (_useCapacitorStore) {
+                    try { return CapDB.batchAddReserveArtists(list); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                if (_useMemoryStore) {
+                    list.forEach(function(item) {
+                        var newRA = {
+                            id: _memoryStore._nextReserveId++,
+                            name: item.name || '', avatar: '',
+                            gender: item.gender || '', age: parseInt(item.age) || 0, height: item.height || '',
+                            region: item.region || '', position: item.position || '', level: item.level || 'C级',
+                            dailySalary: parseFloat(item.dailySalary) || 0, phone: item.phone || '',
+                            status: item.status || '待定', evaluator: item.evaluator || '',
+                            evaluationContent: item.evaluationContent || '',
+                            experience: '', photos: '[]', videos: '[]'
+                        };
+                        _memoryStore.reserveArtists.push(newRA);
+                    });
+                    return { ok: true, data: { count: list.length } };
+                }
+                if (window.electronAPI && window.electronAPI.batchAddReserveArtists) {
+                    try { return await window.electronAPI.batchAddReserveArtists(list); }
+                    catch(e) { return { ok: false, error: e.message }; }
+                }
+                return { ok: false, error: 'IPC 不可用' };
             }
         };
 
@@ -3290,7 +3884,8 @@
             contracts: [],
             evaluations: [],
             announcements: [],
-            stores: ['胡桃里中心城', '胡桃里时代城', '18般罗湖店', '18般广州店', 'Ahouse厦门店', 'Ahouse无锡店', '南宁见山谣', '南宁滚滚', '昆明滚滚', '昆明Bongbong', '海口苏荷']
+            stores: ['胡桃里中心城', '胡桃里时代城', '18般罗湖店', '18般广州店', 'Ahouse厦门店', 'Ahouse无锡店', '南宁见山谣', '南宁滚滚', '昆明滚滚', '昆明Bongbong', '海口苏荷'],
+            reserveArtists: []
         };
 
         // ===== SSE 实时同步 =====
@@ -3308,7 +3903,10 @@
                               'contract-added', 'contract-updated',
                               'salaries-added', 'evaluations-added',
                               'photos-updated', 'avatar-updated', 'videos-updated',
-                              'announcement-added', 'announcement-deleted', 'data-reset'];
+                              'announcement-added', 'announcement-deleted', 'data-reset',
+                              'reserve-artist-added', 'reserve-artist-updated', 'reserve-artist-deleted',
+                              'reserve-batch-added', 'reserve-photos-updated', 'reserve-videos-updated',
+                              'reserve-experience-updated'];
 
             eventTypes.forEach(function(type) {
                 es.addEventListener(type, function(event) {
@@ -3330,16 +3928,16 @@
         function handleRealtimeUpdate(type, data) {
             var hasOpenModal = document.querySelector('.modal[style*="display: block"], .modal[style*="display:block"]');
             if (hasOpenModal) {
-                console.log('[SSE] Modal is open, deferring reload');
                 if (_sseDebounceTimer) clearTimeout(_sseDebounceTimer);
                 _sseDebounceTimer = setTimeout(function() { handleRealtimeUpdate(type, data); }, 1000);
                 return;
             }
             if (_sseDebounceTimer) clearTimeout(_sseDebounceTimer);
+            // 增量刷新：只更新数据 + 渲染当前活跃视图（不重渲全部13个视图）
             _sseDebounceTimer = setTimeout(async function() {
-                await loadData();
-                console.log('[SSE] Data reloaded after ' + type);
-            }, 300);
+                await refreshData();
+                renderCurrentView();
+            }, 150);
         }
 
         // 初始化应用
@@ -3417,8 +4015,50 @@
             setupEventListeners();
         });
 
-        // 加载数据并更新UI
-        async function loadData() {
+        // 获取当前活跃的 tab ID
+        function getActiveTabId() {
+            var activePane = document.querySelector('.tab-pane.show.active');
+            return activePane ? '#' + activePane.id : '#dashboard';
+        }
+
+        // 仅渲染当前活跃 tab 对应的视图（性能优化：避免一次渲染13个视图）
+        function renderCurrentView() {
+            var tab = getActiveTabId();
+            switch (tab) {
+                case '#dashboard':
+                    updateDashboard();
+                    break;
+                case '#artists':
+                    updateArtistsList();
+                    updateArtistsStats();
+                    break;
+                case '#contracts':
+                    updateContractsList();
+                    updateContractsStats();
+                    break;
+                case '#salary':
+                    updateSalaryStats();
+                    updateSalaryList();
+                    break;
+                case '#evaluation':
+                    updateEvaluationList();
+                    updateEvaluationStats();
+                    break;
+                case '#reserve':
+                    renderReserveArtistsList();
+                    renderReserveStats();
+                    break;
+                case '#profile':
+                    updateAnnouncementsList();
+                    break;
+                default:
+                    updateDashboard();
+            }
+            applyRoleBasedUI();
+        }
+
+        // 从服务器获取数据并填充 appData（不渲染UI）
+        async function refreshData() {
             const data = await DBStorage.loadAll();
             if (data) {
                 appData.artists = data.artists || [];
@@ -3426,15 +4066,19 @@
                 appData.evaluations = data.evaluations || [];
                 appData.salaries = data.salaries || [];
                 appData.announcements = data.announcements || [];
-                // Normalize month formats for all salary records (handles legacy data)
+                appData.reserveArtists = data.reserveArtists || [];
                 appData.salaries.forEach(function(s) { s.month = normalizeMonth(s.month); });
                 if (data.stores && data.stores.length > 0) {
                     appData.stores = data.stores;
                 }
             }
+        }
+
+        // 全量加载数据并渲染所有视图（仅用于初始化和数据重置）
+        async function loadData() {
+            await refreshData();
             populateStoreDropdowns();
             populateSalaryMonthDropdowns();
-
             updateDashboard();
             updateAnnouncementsList();
             updateArtistsList();
@@ -3445,6 +4089,8 @@
             updateSalaryList();
             updateEvaluationList();
             updateEvaluationStats();
+            renderReserveArtistsList();
+            renderReserveStats();
             applyRoleBasedUI();
         }
 
@@ -4707,7 +5353,7 @@
                     }
 
                     // 延迟刷新数据
-                    setTimeout(function() { loadData(); }, 100);
+                    setTimeout(async function() { await refreshData(); renderCurrentView(); }, 100);
                 });
             });
 
@@ -4747,7 +5393,7 @@
                     window.scrollTo({ top: 0, behavior: 'smooth' });
 
                     // 延迟刷新数据
-                    setTimeout(function() { loadData(); }, 100);
+                    setTimeout(async function() { await refreshData(); renderCurrentView(); }, 100);
                 });
             });
         }
@@ -4942,7 +5588,7 @@
                 document.getElementById('addArtistModalTitle').textContent = '添加艺人';
                 document.querySelector('#addArtistForm button[type="submit"]').textContent = '添加';
                 clearAvatar();
-                await loadData();
+                await refreshData(); renderCurrentView();
                 showToast(isEdit ? '艺人信息已更新' : '艺人添加成功', 'success');
             } else {
                 showToast((isEdit ? '更新' : '添加') + '失败：' + (result.error || '未知错误'), 'error');
@@ -5036,7 +5682,7 @@
                 checks.forEach(function(cb) { cb.checked = false; });
                 var cpInput = document.getElementById('contractPdfFile');
                 if (cpInput) cpInput.value = '';
-                await loadData();
+                await refreshData(); renderCurrentView();
                 showToast(isEdit ? '合约信息已更新' : '合约添加成功', 'success');
             } else {
                 showToast((isEdit ? '更新' : '添加') + '失败：' + (result.error || '未知错误'), 'error');
@@ -5755,7 +6401,7 @@
                     showToast('公告文件上传成功', 'success');
                     if (titleInput) titleInput.value = '';
                     if (pdfInput) pdfInput.value = '';
-                    await loadData();
+                    await refreshData(); renderCurrentView();
                     console.log('[公告上传] loadData完成, announcements数量:', (appData.announcements || []).length);
                     updateProfileAnnouncementsList();
                 } else {
@@ -5778,7 +6424,7 @@
                 var result = await DBStorage.deleteAnnouncement(id);
                 if (result.ok) {
                     showToast('公告文件已删除', 'success');
-                    await loadData();
+                    await refreshData(); renderCurrentView();
                     updateProfileAnnouncementsList();
                 } else {
                     showToast('删除失败：' + (result.error || '未知错误'), 'error');
@@ -6075,7 +6721,7 @@
                     closeModal('batchUploadModal');
                     var fileInput = document.getElementById('csvFile');
                     if (fileInput) fileInput.value = '';
-                    await loadData();
+                    await refreshData(); renderCurrentView();
                     if (errorCount > 0) {
                         showToast('上传完成：成功' + savedCount + '条，失败' + errorCount + '条', 'info');
                     } else {
@@ -6261,7 +6907,7 @@
                     closeModal('batchContractUploadModal');
                     var fileInput = document.getElementById('contractCsvFile');
                     if (fileInput) fileInput.value = '';
-                    await loadData();
+                    await refreshData(); renderCurrentView();
                     if (errorCount > 0) {
                         showToast('上传完成：成功' + savedCount + '条，失败' + errorCount + '条', 'info');
                     } else {
@@ -6402,7 +7048,7 @@
                     closeModal('salaryUploadModal');
                     var fileInput = document.getElementById('salaryCsvFile');
                     if (fileInput) fileInput.value = '';
-                    await loadData();
+                    await refreshData(); renderCurrentView();
                     if (result.ok) {
                         var msg = '成功上传 ' + salariesToAdd.length + ' 条工资数据';
                         if (skippedCount > 0) msg += '（跳过' + skippedCount + '条无效行）';
@@ -6552,7 +7198,7 @@
                     closeModal('evaluationUploadModal');
                     var fileInput = document.getElementById('evaluationCsvFile');
                     if (fileInput) fileInput.value = '';
-                    await loadData();
+                    await refreshData(); renderCurrentView();
                     if (result.ok) {
                         var msg = '成功上传 ' + evalList.length + ' 条评价数据';
                         if (skippedCount > 0) msg += '（跳过' + skippedCount + '条无效行）';
@@ -6772,7 +7418,7 @@
             var phoneEl = document.getElementById('detailPhone');
             if (phoneVal && /[\d+\-()]/.test(phoneVal)) {
                 var digits = phoneVal.replace(/[^\d+]/g, '');
-                phoneEl.innerHTML = '<a href="tel:' + digits + '" style="color:var(--primary-color);text-decoration:none;font-weight:600;"><i class="fas fa-phone-alt" style="margin-right:6px;font-size:12px;"></i>' + escapeHtml(phoneVal) + '</a>';
+                phoneEl.innerHTML = '<a href="tel:' + digits + '" style="color:var(--primary-color);text-decoration:none;font-weight:600;"><i class="fas fa-phone" style="margin-right:6px;font-size:12px;"></i>' + escapeHtml(phoneVal) + '</a>';
             } else {
                 phoneEl.textContent = phoneVal || '--';
             }
@@ -6843,8 +7489,23 @@
         }
 
         function navigatePhoto(dir) {
-            _currentPhotoIndex = (_currentPhotoIndex + dir + _currentPhotos.length) % _currentPhotos.length;
-            document.getElementById('lightboxImage').src = _currentPhotos[_currentPhotoIndex];
+            var photos = _currentPhotos;
+            var idx = _currentPhotoIndex;
+            // 如果储备艺人详情弹窗打开，使用储备艺人的照片数组
+            var reserveModal = document.getElementById('reserveArtistDetailModal');
+            if (reserveModal && reserveModal.style.display === 'block') {
+                photos = _currentReservePhotos;
+                idx = _reservePhotoIndex;
+            }
+            idx = (idx + dir + photos.length) % photos.length;
+            if (reserveModal && reserveModal.style.display === 'block') {
+                _reservePhotoIndex = idx;
+            } else {
+                _currentPhotoIndex = idx;
+            }
+            var photo = photos[idx];
+            var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.serverPath || '');
+            document.getElementById('lightboxImage').src = src;
         }
 
         async function uploadArtistPhoto(event) {
@@ -6916,14 +7577,15 @@
 
         function getVideoStreamUrl(video) {
             if (!video || !video.serverPath) return '';
-            // Electron: use app-file:// custom protocol
-            if (window.electronAPI && window.electronAPI.isDesktop) {
-                return 'app-file://' + video.serverPath;
-            }
-            // Server/Capacitor: streaming URL from cloud
+            // Server mode (including Electron connected to server): streaming URL from cloud
             var srvUrl = localStorage.getItem('v2_server_url') || '';
+            if (!srvUrl && window.location.protocol.startsWith('http')) srvUrl = window.location.origin;
             if (srvUrl) {
                 return srvUrl.replace(/\/+$/, '') + '/api/videos/stream/' + (_currentDetailArtist ? _currentDetailArtist.id : 0) + '/' + encodeURIComponent(video.id);
+            }
+            // Electron local mode: use app-file:// custom protocol
+            if (window.electronAPI && window.electronAPI.isDesktop) {
+                return 'app-file://' + video.serverPath;
             }
             // Capacitor local file
             if (_useCapacitorStore && video.localPath) return video.localPath;
@@ -6952,6 +7614,7 @@
                         '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + sizeStr + '</div>' +
                         '<div style="margin-top:6px;display:flex;gap:6px;">' +
                             '<button class="btn btn-sm btn-outline-primary" style="flex:1;font-size:11px;padding:2px 6px;" onclick="event.stopPropagation();playVideo(' + idx + ')"><i class="fas fa-play"></i> 播放</button>' +
+                            '<button class="btn btn-sm btn-outline-success" style="font-size:11px;padding:2px 6px;" title="下载" onclick="event.stopPropagation();downloadVideo(' + idx + ')"><i class="fas fa-download"></i></button>' +
                             '<button class="btn btn-sm btn-outline-danger" style="font-size:11px;padding:2px 6px;" onclick="event.stopPropagation();deleteVideo(\'' + escapeHtml(video.id) + '\')"><i class="fas fa-trash"></i></button>' +
                         '</div>' +
                     '</div>';
@@ -6967,19 +7630,42 @@
 
             var playerEl = document.getElementById('videoPlayer');
             var modal = document.getElementById('videoPlayerModal');
-
-            // Pause and clear previous source first
-            playerEl.pause();
-            playerEl.removeAttribute('src');
-            playerEl.load();
-
             var streamUrl = getVideoStreamUrl(video);
-            if (streamUrl) {
-                playerEl.src = streamUrl;
-                playerEl.load();
-                playerEl.play().catch(function() {});
+            if (!streamUrl) {
+                showToast('无法获取视频播放地址', 'error');
+                return;
             }
 
+            // Remove old event listeners by cloning
+            var newPlayer = playerEl.cloneNode(false);
+            playerEl.parentNode.replaceChild(newPlayer, playerEl);
+            playerEl = newPlayer;
+            playerEl.id = 'videoPlayer';
+            playerEl.controls = true;
+            playerEl.playsinline = true;
+            playerEl.style.cssText = 'max-width:95%;max-height:80%;';
+            playerEl.setAttribute('playsinline', '');
+            playerEl.setAttribute('controls', '');
+            playerEl.onclick = function(e) { e.stopPropagation(); };
+
+            playerEl.addEventListener('canplay', function() {
+                playerEl.play().then(function() {
+                    if (playerEl.videoWidth === 0 && playerEl.videoHeight === 0) {
+                        playerEl.pause();
+                        showToast('该视频编码不被浏览器支持（仅声音无画面），建议转为H.264/MP4格式后重新上传', 'error');
+                    }
+                }).catch(function(err) {
+                    showToast('播放失败: ' + err.message, 'error');
+                });
+            }, { once: true });
+
+            playerEl.addEventListener('error', function() {
+                var ve = playerEl.error;
+                showToast('视频加载失败' + (ve ? '(code=' + ve.code + ')' : ''), 'error');
+            });
+
+            playerEl.src = streamUrl;
+            playerEl.load();
             modal.style.display = 'flex';
         }
 
@@ -7050,15 +7736,15 @@
             try {
                 setProgress(0);
 
-                if (isElectron && file.path) {
-                    // Electron: copy file via IPC (file.path is the local filesystem path)
+                if (isElectron && file.path && !DBStorage._serverMode) {
+                    // Electron local mode: copy file via IPC (file.path is the local filesystem path)
                     setProgress(30, '复制中...');
-                    console.log('[uploadVideo] Electron mode, file.path=' + file.path + ', fileName=' + file.name + ', size=' + file.size);
+                    console.log('[uploadVideo] Electron local mode, file.path=' + file.path + ', fileName=' + file.name + ', size=' + file.size);
                     var result = await DBStorage.uploadVideo(artistId, file.path, file.name);
                     console.log('[uploadVideo] IPC result:', JSON.stringify(result));
                     if (result.ok) {
                         setProgress(100, '完成');
-                        await loadData();
+                        await refreshData(); renderCurrentView();
                         for (var i = 0; i < appData.artists.length; i++) {
                             if (appData.artists[i].id === artistId) {
                                 _currentDetailArtist = appData.artists[i];
@@ -7111,7 +7797,7 @@
                         var svrResult = uploadResult;
                         if (svrResult.ok) {
                             setProgress(100, '完成');
-                            await loadData();
+                            await refreshData(); renderCurrentView();
                             for (var j = 0; j < appData.artists.length; j++) {
                                 if (appData.artists[j].id === artistId) {
                                     _currentDetailArtist = appData.artists[j];
@@ -7129,7 +7815,7 @@
                         var capResult = await DBStorage.uploadVideo(artistId, dataUrl, file.name);
                         if (capResult.ok) {
                             setProgress(100, '完成');
-                            await loadData();
+                            await refreshData(); renderCurrentView();
                             for (var k = 0; k < appData.artists.length; k++) {
                                 if (appData.artists[k].id === artistId) {
                                     _currentDetailArtist = appData.artists[k];
@@ -7151,6 +7837,53 @@
 
             hideProgress();
             event.target.value = '';
+        }
+
+        async function downloadVideo(idx) {
+            if (!_currentVideos || idx < 0 || idx >= _currentVideos.length) return;
+            var video = _currentVideos[idx];
+            var streamUrl = getVideoStreamUrl(video);
+            if (!streamUrl) { showToast('无法获取下载地址', 'error'); return; }
+
+            showToast('正在下载视频...', 'info');
+            try {
+                var resp = await fetch(streamUrl);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                var blob = await resp.blob();
+                var fileName = video.fileName || 'video.mp4';
+
+                var isCapacitor = (typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+                if (isCapacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) {
+                    var base64Data = await new Promise(function(resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function(e) { resolve(e.target.result); };
+                        reader.onerror = function() { reject(new Error('读取失败')); };
+                        reader.readAsDataURL(blob);
+                    });
+                    var matches = base64Data.match(/^data:[^;]+;base64,(.+)$/);
+                    if (!matches) throw new Error('Base64转换失败');
+                    await Capacitor.Plugins.Filesystem.writeFile({
+                        path: fileName,
+                        data: matches[1],
+                        directory: 'EXTERNAL',
+                        recursive: true
+                    });
+                    showToast('视频已保存: ' + fileName, 'success');
+                } else {
+                    var blobUrl = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = fileName;
+                    a.style.display = 'none';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 60000);
+                    showToast('下载完成', 'success');
+                }
+            } catch(e) {
+                showToast('下载失败：' + e.message, 'error');
+            }
         }
 
         async function deleteVideo(videoId) {
@@ -7198,7 +7931,7 @@
             if (confirm('确定要删除这个艺人吗？')) {
                 const result = await DBStorage.deleteArtist(id);
                 if (result.ok) {
-                    await loadData();
+                    await refreshData(); renderCurrentView();
                     showToast('艺人删除成功', 'success');
                 } else {
                     showToast('删除失败：' + (result.error || '未知错误'), 'error');
@@ -7229,6 +7962,646 @@
                     modal.style.display = 'none';
                 }
             });
+        }
+
+        // ===== 储备艺人渲染 =====
+
+        function renderReserveStats() {
+            var list = appData.reserveArtists || [];
+            var total = list.length;
+            var bPlusCount = 0;
+            var pendingCount = 0;
+            var arrangedCount = 0;
+            var bPlusLevels = ['S级', 'A+级', 'A级', 'B+级'];
+            list.forEach(function(a) {
+                if (bPlusLevels.indexOf(a.level) >= 0) bPlusCount++;
+                if (a.status === '待定') pendingCount++;
+                if (a.status === '已安排') arrangedCount++;
+            });
+            var el = function(id, val) { var e = document.getElementById(id); if (e) e.textContent = val; };
+            el('reserveTotalCount', total);
+            el('reserveBPlusCount', bPlusCount);
+            el('reservePendingCount', pendingCount);
+            el('reserveArrangedCount', arrangedCount);
+        }
+
+        function renderReserveArtistsList() {
+            var list = appData.reserveArtists || [];
+            var searchTerm = (document.getElementById('reserveSearchInput') || {}).value || '';
+            var statusFilter = (document.getElementById('reserveStatusFilter') || {}).value || '';
+            if (searchTerm.trim()) {
+                var kw = searchTerm.trim().toLowerCase();
+                list = list.filter(function(a) {
+                    return (a.name || '').toLowerCase().indexOf(kw) >= 0 ||
+                           (a.position || '').toLowerCase().indexOf(kw) >= 0 ||
+                           (a.region || '').toLowerCase().indexOf(kw) >= 0;
+                });
+            }
+            if (statusFilter) {
+                list = list.filter(function(a) {
+                    return a.status === statusFilter;
+                });
+            }
+            var tbody = document.getElementById('reserveArtistsList');
+            if (!tbody) return;
+            if (list.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">暂无数据</td></tr>';
+                return;
+            }
+            tbody.innerHTML = list.map(function(a) {
+                var avatarUrl = a.avatar || '';
+                var avatarHtml = avatarUrl
+                    ? '<img src="' + escapeHtml(avatarUrl) + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover;cursor:pointer;" onclick="openReserveArtistDetail(' + a.id + ')" title="点击查看详情">'
+                    : '<div style="width:36px;height:36px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;cursor:pointer;" onclick="openReserveArtistDetail(' + a.id + ')" title="点击查看详情"><i class="fas fa-user" style="color:var(--text-muted);"></i></div>';
+                return '<tr>' +
+                    '<td>' + avatarHtml + '</td>' +
+                    '<td><a href="javascript:void(0)" style="color:var(--primary-color);font-weight:600;" onclick="openReserveArtistDetail(' + a.id + ')">' + escapeHtml(a.name) + '</a></td>' +
+                    '<td>' + escapeHtml(a.position || '') + '</td>' +
+                    '<td>' + escapeHtml(a.gender || '') + '</td>' +
+                    '<td>' + (a.age || '') + '</td>' +
+                    '<td>' + escapeHtml(a.height || '') + '</td>' +
+                    '<td>' + escapeHtml(a.region || '') + '</td>' +
+                    '<td><span class="badge bg-' + (a.level === 'S级' || a.level === 'A+级' ? 'danger' : a.level === 'A级' ? 'warning' : 'secondary') + '">' + escapeHtml(a.level) + '</span></td>' +
+                    '<td>' + (a.dailySalary ? '¥' + a.dailySalary + '/天' : '') + '</td>' +
+                    '<td><span class="badge bg-' + (a.status === '已安排' ? 'success' : 'info') + '">' + escapeHtml(a.status) + '</span></td>' +
+                    '<td><div class="admin-only">' +
+                        '<button class="btn btn-sm btn-outline-primary me-1" onclick="editReserveArtist(' + a.id + ')" title="编辑"><i class="fas fa-edit"></i></button>' +
+                        '<button class="btn btn-sm btn-outline-danger" onclick="deleteReserveArtist(' + a.id + ')" title="删除"><i class="fas fa-trash"></i></button>' +
+                    '</div></td>' +
+                '</tr>';
+            }).join('');
+            renderReserveStats();
+        }
+
+        function filterReserveArtists() {
+            renderReserveArtistsList();
+        }
+
+        function getSelectedReservePositions() {
+            var checks = document.getElementsByName('reserveArtistPosition');
+            var selected = [];
+            for (var i = 0; i < checks.length; i++) {
+                if (checks[i].checked) selected.push(checks[i].value);
+            }
+            return selected.join(', ');
+        }
+
+        function setReservePositionCheckboxes(positionStr) {
+            var checks = document.getElementsByName('reserveArtistPosition');
+            var posList = (positionStr || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; });
+            for (var i = 0; i < checks.length; i++) {
+                checks[i].checked = posList.indexOf(checks[i].value) >= 0;
+            }
+        }
+
+        // ===== 储备艺人 CRUD =====
+
+        function openAddReserveArtistModal() {
+            if (!guardWrite('添加储备艺人')) return;
+            document.getElementById('editReserveArtistId').value = '';
+            document.getElementById('addReserveArtistModalTitle').textContent = '添加储备艺人';
+            document.getElementById('addReserveArtistForm').reset();
+            document.getElementById('reserveAvatarPreview').style.display = 'none';
+            document.getElementById('reserveAvatarClearBtn').style.display = 'none';
+            document.getElementById('reserveArtistAvatar').value = '';
+            setReservePositionCheckboxes('');
+            document.getElementById('addReserveArtistModal').style.display = 'block';
+        }
+
+        function handleReserveAvatarSelect(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+            if (file.size > 10 * 1024 * 1024) { showToast('头像文件不能超过10MB', 'error'); return; }
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('reserveAvatarPreview').src = e.target.result;
+                document.getElementById('reserveAvatarPreview').style.display = 'block';
+                document.getElementById('reserveAvatarClearBtn').style.display = 'inline-block';
+                document.getElementById('reserveArtistAvatar').value = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearReserveAvatar() {
+            document.getElementById('reserveAvatarPreview').style.display = 'none';
+            document.getElementById('reserveAvatarClearBtn').style.display = 'none';
+            document.getElementById('reserveArtistAvatar').value = '';
+            document.getElementById('reserveAvatarFileInput').value = '';
+        }
+
+        document.getElementById('addReserveArtistForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            if (!guardWrite('添加储备艺人')) return;
+            var id = document.getElementById('editReserveArtistId').value;
+            var data = {
+                name: document.getElementById('reserveArtistName').value.trim(),
+                position: getSelectedReservePositions(),
+                gender: document.getElementById('reserveArtistGender').value,
+                age: parseInt(document.getElementById('reserveArtistAge').value) || 0,
+                height: document.getElementById('reserveArtistHeight').value.trim(),
+                region: document.getElementById('reserveArtistRegion').value.trim(),
+                level: document.getElementById('reserveArtistLevel').value,
+                dailySalary: parseFloat(document.getElementById('reserveArtistDailySalary').value) || 0,
+                phone: document.getElementById('reserveArtistPhone').value.trim(),
+                status: document.getElementById('reserveArtistStatus').value,
+                evaluator: document.getElementById('reserveArtistEvaluator').value.trim(),
+                evaluationContent: document.getElementById('reserveArtistEvaluationContent').value.trim(),
+                avatar: document.getElementById('reserveArtistAvatar').value,
+                experience: ''
+            };
+            if (!data.name) { showToast('请输入姓名', 'error'); return; }
+            if (!data.position) { showToast('请选择岗位', 'error'); return; }
+
+            var result;
+            if (id) {
+                data.id = parseInt(id);
+                result = await DBStorage.updateReserveArtist(data);
+            } else {
+                result = await DBStorage.addReserveArtist(data);
+            }
+            if (result.ok) {
+                closeModal('addReserveArtistModal');
+                await refreshData(); renderCurrentView();
+                showToast(id ? '储备艺人更新成功' : '储备艺人添加成功', 'success');
+            } else {
+                showToast('操作失败：' + (result.error || '未知错误'), 'error');
+            }
+        });
+
+        async function editReserveArtist(id) {
+            if (!guardWrite('编辑储备艺人')) return;
+            var artist = null;
+            for (var i = 0; i < appData.reserveArtists.length; i++) {
+                if (appData.reserveArtists[i].id === id) { artist = appData.reserveArtists[i]; break; }
+            }
+            if (!artist) { showToast('储备艺人不存在', 'error'); return; }
+            document.getElementById('editReserveArtistId').value = artist.id;
+            document.getElementById('addReserveArtistModalTitle').textContent = '编辑储备艺人';
+            document.getElementById('reserveArtistName').value = artist.name || '';
+            setReservePositionCheckboxes(artist.position || '');
+            document.getElementById('reserveArtistGender').value = artist.gender || '';
+            document.getElementById('reserveArtistAge').value = artist.age || '';
+            document.getElementById('reserveArtistHeight').value = artist.height || '';
+            document.getElementById('reserveArtistRegion').value = artist.region || '';
+            document.getElementById('reserveArtistLevel').value = artist.level || 'C级';
+            document.getElementById('reserveArtistDailySalary').value = artist.dailySalary || '';
+            document.getElementById('reserveArtistPhone').value = artist.phone || '';
+            document.getElementById('reserveArtistStatus').value = artist.status || '待定';
+            document.getElementById('reserveArtistEvaluator').value = artist.evaluator || '';
+            document.getElementById('reserveArtistEvaluationContent').value = artist.evaluationContent || '';
+            if (artist.avatar) {
+                document.getElementById('reserveArtistAvatar').value = artist.avatar;
+                document.getElementById('reserveAvatarPreview').src = artist.avatar;
+                document.getElementById('reserveAvatarPreview').style.display = 'block';
+                document.getElementById('reserveAvatarClearBtn').style.display = 'inline-block';
+            } else {
+                document.getElementById('reserveArtistAvatar').value = '';
+                document.getElementById('reserveAvatarPreview').style.display = 'none';
+                document.getElementById('reserveAvatarClearBtn').style.display = 'none';
+            }
+            document.getElementById('addReserveArtistModal').style.display = 'block';
+        }
+
+        async function deleteReserveArtist(id) {
+            if (!guardWrite('删除储备艺人')) return;
+            if (!confirm('确定要删除这个储备艺人吗？')) return;
+            var result = await DBStorage.deleteReserveArtist(id);
+            if (result.ok) {
+                await refreshData(); renderCurrentView();
+                showToast('储备艺人删除成功', 'success');
+            } else {
+                showToast('删除失败：' + (result.error || '未知错误'), 'error');
+            }
+        }
+
+        // ===== 储备艺人详情弹窗 =====
+
+        function openReserveArtistDetail(id) {
+            var artist = null;
+            for (var i = 0; i < appData.reserveArtists.length; i++) {
+                if (appData.reserveArtists[i].id === id) { artist = appData.reserveArtists[i]; break; }
+            }
+            if (!artist) return;
+            _currentReserveArtist = artist;
+            try { _currentReservePhotos = JSON.parse(artist.photos || '[]'); } catch(_) { _currentReservePhotos = []; }
+            try { _currentReserveVideos = JSON.parse(artist.videos || '[]'); } catch(_) { _currentReserveVideos = []; }
+
+            var setText = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || ''; };
+            document.getElementById('reserveArtistDetailTitle').textContent = artist.name + ' - 详情';
+            var avatarEl = document.getElementById('reserveDetailAvatar');
+            if (avatarEl) avatarEl.src = artist.avatar || '';
+            setText('reserveDetailName', artist.name);
+            setText('reserveDetailName2', artist.name);
+            setText('reserveDetailPosition', artist.position);
+            setText('reserveDetailGender', artist.gender);
+            setText('reserveDetailAge', artist.age);
+            setText('reserveDetailHeight', artist.height);
+            setText('reserveDetailRegion', artist.region);
+            setText('reserveDetailLevel2', artist.level);
+            setText('reserveDetailSalary', artist.dailySalary ? '¥' + artist.dailySalary + '/天' : '');
+            var phoneEl = document.getElementById('reserveDetailPhone');
+            if (phoneEl) {
+                if (artist.phone) {
+                    phoneEl.innerHTML = '<a href="tel:' + escapeHtml(artist.phone) + '" style="color:var(--primary-color);text-decoration:underline;"><i class="fas fa-phone"></i> ' + escapeHtml(artist.phone) + '</a>';
+                } else {
+                    phoneEl.textContent = '';
+                }
+            }
+            setText('reserveDetailStatus', artist.status);
+            setText('reserveDetailEvaluator', artist.evaluator);
+            setText('reserveDetailEvaluationContent', artist.evaluationContent);
+
+            var levelBadge = document.getElementById('reserveDetailLevel');
+            if (levelBadge) {
+                levelBadge.textContent = artist.level || 'C级';
+                levelBadge.className = 'badge bg-' + (artist.level === 'S级' || artist.level === 'A+级' ? 'danger' : artist.level === 'A级' ? 'warning' : 'secondary');
+            }
+
+            var expEl = document.getElementById('reserveExperienceTextarea');
+            if (expEl) expEl.value = artist.experience || '';
+
+            renderReservePhotoGallery(_currentReservePhotos);
+            renderReserveVideoGallery(_currentReserveVideos);
+            document.getElementById('reserveArtistDetailModal').style.display = 'block';
+        }
+
+        async function saveReserveExperience() {
+            if (!guardWrite('保存演出经历')) return;
+            if (!_currentReserveArtist) return;
+            var expText = document.getElementById('reserveExperienceTextarea').value;
+            var result = await DBStorage.saveReserveExperience(_currentReserveArtist.id, expText);
+            if (result.ok) {
+                _currentReserveArtist.experience = expText;
+                for (var i = 0; i < appData.reserveArtists.length; i++) {
+                    if (appData.reserveArtists[i].id === _currentReserveArtist.id) {
+                        appData.reserveArtists[i].experience = expText;
+                        break;
+                    }
+                }
+                showToast('演出经历保存成功', 'success');
+            } else {
+                showToast('保存失败：' + (result.error || '未知错误'), 'error');
+            }
+        }
+
+        // ===== 储备艺人形象照 =====
+
+        function renderReservePhotoGallery(photos) {
+            var container = document.getElementById('reservePhotoGallery');
+            if (!container) return;
+            if (!photos || photos.length === 0) {
+                container.innerHTML = '<div style="color:#aaa;padding:20px;">暂无形象照</div>';
+                return;
+            }
+            container.innerHTML = photos.map(function(photo, idx) {
+                var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.serverPath || '');
+                return '<div style="position:relative;flex-shrink:0;">' +
+                    '<img src="' + escapeHtml(src) + '" style="width:120px;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="openReserveLightbox(' + idx + ')">' +
+                    '<button class="btn btn-sm btn-danger admin-only" style="position:absolute;top:4px;right:4px;padding:2px 6px;font-size:10px;" onclick="event.stopPropagation();deleteReservePhoto(' + idx + ')"><i class="fas fa-times"></i></button>' +
+                '</div>';
+            }).join('');
+        }
+
+        function openReserveLightbox(idx) {
+            _reservePhotoIndex = idx;
+            var photos = _currentReservePhotos;
+            var photo = photos[idx];
+            var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.serverPath || '');
+            var img = document.getElementById('lightboxImage');
+            if (img) img.src = src;
+            var lb = document.getElementById('photoLightbox');
+            if (lb) lb.style.display = 'flex';
+        }
+
+        async function uploadReservePhoto(event) {
+            if (!guardWrite('上传形象照')) return;
+            var file = event.target.files[0];
+            if (!file) return;
+            if (file.size > 10 * 1024 * 1024) { showToast('照片不能超过10MB', 'error'); return; }
+            var reader = new FileReader();
+            reader.onload = async function(e) {
+                var dataUrl = e.target.result;
+                _currentReservePhotos.push({ dataUrl: dataUrl, serverPath: '', uploadedAt: new Date().toISOString() });
+                var json = JSON.stringify(_currentReservePhotos);
+                var result = await DBStorage.saveReservePhotos(_currentReserveArtist.id, json);
+                if (result.ok) {
+                    _currentReserveArtist.photos = json;
+                    for (var i = 0; i < appData.reserveArtists.length; i++) {
+                        if (appData.reserveArtists[i].id === _currentReserveArtist.id) {
+                            appData.reserveArtists[i].photos = json;
+                            break;
+                        }
+                    }
+                    renderReservePhotoGallery(_currentReservePhotos);
+                    showToast('形象照上传成功', 'success');
+                } else {
+                    _currentReservePhotos.pop();
+                    showToast('上传失败：' + (result.error || '未知错误'), 'error');
+                }
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        }
+
+        async function deleteReservePhoto(idx) {
+            if (!guardWrite('删除形象照')) return;
+            _currentReservePhotos.splice(idx, 1);
+            var json = JSON.stringify(_currentReservePhotos);
+            var result = await DBStorage.saveReservePhotos(_currentReserveArtist.id, json);
+            if (result.ok) {
+                _currentReserveArtist.photos = json;
+                for (var i = 0; i < appData.reserveArtists.length; i++) {
+                    if (appData.reserveArtists[i].id === _currentReserveArtist.id) {
+                        appData.reserveArtists[i].photos = json;
+                        break;
+                    }
+                }
+                renderReservePhotoGallery(_currentReservePhotos);
+                showToast('形象照已删除', 'success');
+            } else {
+                showToast('删除失败', 'error');
+            }
+        }
+
+        // ===== 储备艺人视频 =====
+
+        function renderReserveVideoGallery(videos) {
+            var container = document.getElementById('reserveVideoGallery');
+            if (!container) return;
+            if (!videos || videos.length === 0) {
+                container.innerHTML = '<div style="color:var(--text-muted);padding:20px;">暂无视频</div>';
+                return;
+            }
+            container.innerHTML = videos.map(function(v, idx) {
+                return '<div style="background:var(--surface-raised);border-radius:8px;padding:10px;width:200px;flex-shrink:0;">' +
+                    '<div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="playReserveVideo(' + idx + ')">' +
+                    '<i class="fas fa-play-circle" style="font-size:28px;color:var(--primary-color);"></i>' +
+                    '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(v.fileName || '视频') + '</div>' +
+                    '<div style="font-size:11px;color:var(--text-muted);">' + formatFileSize(v.size) + '</div>' +
+                    '</div></div>' +
+                    '<div style="margin-top:6px;display:flex;gap:4px;">' +
+                    '<button class="btn btn-sm btn-outline-danger admin-only" style="font-size:11px;padding:2px 6px;" onclick="event.stopPropagation();deleteReserveVideo(\'' + (v.id || '') + '\')"><i class="fas fa-trash"></i></button>' +
+                    '<a class="btn btn-sm btn-outline-success" style="font-size:11px;padding:2px 6px;" href="' + escapeHtml(getReserveVideoStreamUrl(v)) + '" download="' + escapeHtml(v.fileName || 'video.mp4') + '"><i class="fas fa-download"></i></a>' +
+                    '</div></div>';
+            }).join('');
+        }
+
+        function getReserveVideoStreamUrl(video) {
+            if (!video) return '#';
+            if (video.localPath && video.localPath.startsWith('data:video/')) return video.localPath;
+            if (video.serverPath) {
+                var base = localStorage.getItem('v2_server_url') || '';
+                if (!base && window.location.protocol.startsWith('http')) base = window.location.origin;
+                if (base) return base.replace(/\/+$/, '') + '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + (video.id || '');
+                return '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + (video.id || '');
+            }
+            return '#';
+        }
+
+        function playReserveVideo(idx) {
+            var video = _currentReserveVideos[idx];
+            if (!video) return;
+            var streamUrl = getReserveVideoStreamUrl(video);
+            if (!streamUrl) {
+                showToast('无法获取视频播放地址', 'error');
+                return;
+            }
+
+            var playerEl = document.getElementById('videoPlayer');
+            var modal = document.getElementById('videoPlayerModal');
+            if (!playerEl || !modal) return;
+
+            var newPlayer = playerEl.cloneNode(false);
+            playerEl.parentNode.replaceChild(newPlayer, playerEl);
+            playerEl = newPlayer;
+            playerEl.id = 'videoPlayer';
+            playerEl.controls = true;
+            playerEl.playsinline = true;
+            playerEl.style.cssText = 'max-width:95%;max-height:80%;';
+            playerEl.setAttribute('playsinline', '');
+            playerEl.setAttribute('controls', '');
+            playerEl.onclick = function(e) { e.stopPropagation(); };
+
+            playerEl.addEventListener('canplay', function() {
+                playerEl.play().then(function() {
+                    if (playerEl.videoWidth === 0 && playerEl.videoHeight === 0) {
+                        playerEl.pause();
+                        showToast('该视频编码不被浏览器支持（仅声音无画面），建议转为H.264/MP4格式后重新上传', 'error');
+                    }
+                }).catch(function(err) {
+                    showToast('播放失败: ' + err.message, 'error');
+                });
+            }, { once: true });
+
+            playerEl.addEventListener('error', function() {
+                var ve = playerEl.error;
+                showToast('视频加载失败' + (ve ? '(code=' + ve.code + ')' : ''), 'error');
+            });
+
+            playerEl.src = streamUrl;
+            playerEl.load();
+            modal.style.display = 'flex';
+        }
+
+        async function uploadReserveVideo(event) {
+            if (!guardWrite('上传视频')) return;
+            var file = event.target.files[0];
+            if (!file) return;
+            if (file.size > 200 * 1024 * 1024) { showToast('视频不能超过200MB', 'error'); return; }
+            var progressEl = document.getElementById('reserveUploadVideoProgress');
+            var progressBar = document.getElementById('reserveUploadVideoProgressBar');
+            var progressBarInner = document.getElementById('reserveUploadVideoProgressBarInner');
+            var uploadBtn = document.getElementById('reserveUploadVideoBtn');
+            if (progressEl) progressEl.style.display = 'inline';
+            if (progressBar) progressBar.style.display = 'block';
+            if (uploadBtn) uploadBtn.disabled = true;
+
+            var reader = new FileReader();
+            reader.onprogress = function(e) {
+                if (e.lengthComputable && progressEl) {
+                    var pct = Math.round(e.loaded / e.total * 100);
+                    progressEl.textContent = pct + '%';
+                    if (progressBarInner) progressBarInner.style.width = pct + '%';
+                }
+            };
+            reader.onload = async function(e) {
+                var dataUrl = e.target.result;
+                var result = await DBStorage.uploadReserveVideo(_currentReserveArtist.id, dataUrl, file.name);
+                if (result.ok) {
+                    var path = result.path || '';
+                    var videoMeta = {
+                        id: 'rv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+                        fileName: file.name,
+                        serverPath: path,
+                        size: file.size,
+                        mimeType: file.type || 'video/mp4',
+                        uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+                    };
+                    _currentReserveVideos.push(videoMeta);
+                    var json = JSON.stringify(_currentReserveVideos);
+                    await DBStorage.saveReserveVideos(_currentReserveArtist.id, json);
+                    _currentReserveArtist.videos = json;
+                    for (var i = 0; i < appData.reserveArtists.length; i++) {
+                        if (appData.reserveArtists[i].id === _currentReserveArtist.id) {
+                            appData.reserveArtists[i].videos = json;
+                            break;
+                        }
+                    }
+                    renderReserveVideoGallery(_currentReserveVideos);
+                    showToast('视频上传成功', 'success');
+                } else {
+                    showToast('上传失败：' + (result.error || '未知错误'), 'error');
+                }
+                if (progressEl) progressEl.style.display = 'none';
+                if (progressBar) progressBar.style.display = 'none';
+                if (uploadBtn) uploadBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        }
+
+        async function deleteReserveVideo(videoId) {
+            if (!guardWrite('删除视频')) return;
+            if (!confirm('确定要删除这个视频吗？')) return;
+            var result = await DBStorage.deleteReserveVideo(_currentReserveArtist.id, videoId);
+            if (result.ok) {
+                _currentReserveVideos = _currentReserveVideos.filter(function(v) { return v.id !== videoId; });
+                var json = JSON.stringify(_currentReserveVideos);
+                await DBStorage.saveReserveVideos(_currentReserveArtist.id, json);
+                _currentReserveArtist.videos = json;
+                for (var i = 0; i < appData.reserveArtists.length; i++) {
+                    if (appData.reserveArtists[i].id === _currentReserveArtist.id) {
+                        appData.reserveArtists[i].videos = json;
+                        break;
+                    }
+                }
+                renderReserveVideoGallery(_currentReserveVideos);
+                showToast('视频已删除', 'success');
+            } else {
+                showToast('删除失败：' + (result.error || '未知错误'), 'error');
+            }
+        }
+
+        // ===== 储备艺人批量上传 =====
+
+        function openReserveBatchUploadModal() {
+            if (!guardWrite('批量上传储备艺人')) return;
+            _reserveBatchData = [];
+            document.getElementById('reserveBatchPreview').style.display = 'none';
+            document.getElementById('reserveBatchConfirmBtn').style.display = 'none';
+            document.getElementById('reserveBatchFileInput').value = '';
+            document.getElementById('reserveBatchUploadModal').style.display = 'block';
+        }
+
+        function downloadReserveTemplate() {
+            var csvContent = '﻿姓名,岗位,性别,年龄,身高,地区,等级,日薪,联系方式,状态,评价人,评价内容\n' +
+                '张三,男歌,男,25,175cm,深圳,S级,800,13800000001,待定,李四,表现优秀\n' +
+                '李四,女歌,女,22,165cm,广州,A级,600,13800000002,已安排,王五,唱功扎实';
+            var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = '储备艺人导入模板.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function handleReserveBatchFile(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var bytes = new Uint8Array(e.target.result);
+                var text;
+
+                // 检查 UTF-8 BOM: EF BB BF
+                var hasUtf8Bom = bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
+
+                if (hasUtf8Bom) {
+                    text = new TextDecoder('utf-8').decode(bytes);
+                } else {
+                    text = new TextDecoder('utf-8').decode(bytes);
+                    var containsName = text.indexOf('姓名') !== -1;
+                    var hasNonAscii = false;
+                    for (var k = 0; k < Math.min(bytes.length, 200); k++) {
+                        if (bytes[k] > 127) { hasNonAscii = true; break; }
+                    }
+                    if (!containsName && hasNonAscii) {
+                        try {
+                            var gbkText = new TextDecoder('gbk').decode(bytes);
+                            if (gbkText.indexOf('姓名') !== -1) text = gbkText;
+                        } catch(_) {}
+                    }
+                }
+                var lines = text.split(/[\r\n]+/).filter(function(l) { return l.trim(); });
+                if (lines.length < 2) { showToast('CSV文件至少需要标题行和一条数据', 'error'); return; }
+                var headers = lines[0].split(',').map(function(h) { return h.trim(); });
+                _reserveBatchData = [];
+                for (var i = 1; i < lines.length; i++) {
+                    var cells = parseCSVLine(lines[i]);
+                    if (cells.length < 2) continue;
+                    var item = {
+                        name: cells[0] || '',
+                        position: cells[1] || '',
+                        gender: cells[2] || '',
+                        age: cells[3] || '',
+                        height: cells[4] || '',
+                        region: cells[5] || '',
+                        level: cells[6] || 'C级',
+                        dailySalary: cells[7] || '0',
+                        phone: cells[8] || '',
+                        status: cells[9] || '待定',
+                        evaluator: cells[10] || '',
+                        evaluationContent: cells[11] || ''
+                    };
+                    _reserveBatchData.push(item);
+                }
+                var tbody = document.getElementById('reserveBatchPreviewBody');
+                if (tbody) {
+                    tbody.innerHTML = _reserveBatchData.map(function(item) {
+                        return '<tr><td>' + escapeHtml(item.name) + '</td><td>' + escapeHtml(item.position) + '</td><td>' + escapeHtml(item.gender) + '</td><td>' + escapeHtml(item.region) + '</td><td>' + escapeHtml(item.level) + '</td><td>' + escapeHtml(item.status) + '</td></tr>';
+                    }).join('');
+                }
+                document.getElementById('reserveBatchPreview').style.display = 'block';
+                document.getElementById('reserveBatchConfirmBtn').style.display = 'inline-block';
+                document.getElementById('reserveBatchConfirmBtn').textContent = '确认导入 (' + _reserveBatchData.length + '条)';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function parseCSVLine(line) {
+            var result = [];
+            var current = '';
+            var inQuotes = false;
+            for (var i = 0; i < line.length; i++) {
+                var ch = line[i];
+                if (inQuotes) {
+                    if (ch === '"') {
+                        if (i + 1 < line.length && line[i + 1] === '"') { current += '"'; i++; }
+                        else { inQuotes = false; }
+                    } else { current += ch; }
+                } else {
+                    if (ch === '"') { inQuotes = true; }
+                    else if (ch === ',') { result.push(current.trim()); current = ''; }
+                    else { current += ch; }
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        async function confirmReserveBatchImport() {
+            if (!guardWrite('批量导入储备艺人')) return;
+            if (_reserveBatchData.length === 0) { showToast('没有可导入的数据', 'error'); return; }
+            var result = await DBStorage.batchAddReserveArtists(_reserveBatchData);
+            if (result.ok) {
+                closeModal('reserveBatchUploadModal');
+                await refreshData(); renderCurrentView();
+                showToast('成功导入 ' + _reserveBatchData.length + ' 条储备艺人', 'success');
+            } else {
+                showToast('批量导入失败：' + (result.error || '未知错误'), 'error');
+            }
         }
     </script>
 </body>

@@ -66,6 +66,10 @@
             --mobile-nav-bg: rgba(28,28,33,0.92);
             --mobile-nav-border: rgba(255,255,255,0.06);
             --mobile-nav-shadow: 0 -1px 20px rgba(0,0,0,0.35);
+            --input-bg: #1C1C21;
+            --bg-secondary: #1C1C21;
+            color-scheme: dark;
+            scrollbar-color: var(--border-color) var(--surface-bg);
         }
 
         /* ---- Morandi (legacy) ---- */
@@ -109,6 +113,9 @@
             --mobile-nav-bg: rgba(250,248,245,0.92);
             --mobile-nav-border: rgba(0,0,0,0.08);
             --mobile-nav-shadow: 0 -1px 16px rgba(0,0,0,0.06);
+            --input-bg: #FAF8F5;
+            --bg-secondary: #EDE8E0;
+            scrollbar-color: var(--border-color) var(--surface-bg);
         }
 
         /* ---- Orange (legacy) ---- */
@@ -152,6 +159,9 @@
             --mobile-nav-bg: rgba(255,255,255,0.92);
             --mobile-nav-border: rgba(0,0,0,0.06);
             --mobile-nav-shadow: 0 -1px 16px rgba(0,0,0,0.06);
+            --input-bg: #FFFFFF;
+            --bg-secondary: #FFF8F3;
+            scrollbar-color: var(--border-color) var(--surface-bg);
         }
 
         /* ---- Base Reset ---- */
@@ -2179,17 +2189,17 @@
                 </div>
                 <!-- 右侧：详细信息 -->
                 <div style="flex:1;min-width:280px;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:13px;">
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">姓名</div><div id="detailName2"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">业务等级</div><div id="detailLevel2"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">年龄</div><div id="detailAge"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">综合评价</div><div id="detailScore" style="font-weight:600;"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">日薪标准</div><div id="detailSalary"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">所在门店</div><div id="detailStore"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">联系方式</div><div id="detailPhone"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">岗位</div><div id="detailPosition"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">签约状态</div><div id="detailContractStatus"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">状态</div><div id="detailStatus"></div></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:15px;">
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">姓名</div><div id="detailName2"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">业务等级</div><div id="detailLevel2"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">年龄</div><div id="detailAge"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">综合评价</div><div id="detailScore" style="font-weight:600;"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">日薪标准</div><div id="detailSalary"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">所在门店</div><div id="detailStore"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">联系方式</div><div id="detailPhone"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">岗位</div><div id="detailPosition"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">签约状态</div><div id="detailContractStatus"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">状态</div><div id="detailStatus"></div></div>
                     </div>
                 </div>
             </div>
@@ -2354,19 +2364,19 @@
                 </div>
                 <!-- 右侧：详细信息 -->
                 <div style="flex:1;min-width:280px;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:13px;">
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">姓名</div><div id="reserveDetailName2"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">岗位</div><div id="reserveDetailPosition"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">性别</div><div id="reserveDetailGender"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">年龄</div><div id="reserveDetailAge"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">身高</div><div id="reserveDetailHeight"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">地区</div><div id="reserveDetailRegion"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">等级</div><div id="reserveDetailLevel2"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">日薪</div><div id="reserveDetailSalary"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">联系方式</div><div id="reserveDetailPhone"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">状态</div><div id="reserveDetailStatus"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">评价人</div><div id="reserveDetailEvaluator"></div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:1px;">评价内容</div><div id="reserveDetailEvaluationContent"></div></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:15px;">
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">姓名</div><div id="reserveDetailName2"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">岗位</div><div id="reserveDetailPosition"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">性别</div><div id="reserveDetailGender"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">年龄</div><div id="reserveDetailAge"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">身高</div><div id="reserveDetailHeight"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">地区</div><div id="reserveDetailRegion"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">等级</div><div id="reserveDetailLevel2"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">日薪</div><div id="reserveDetailSalary"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">联系方式</div><div id="reserveDetailPhone"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">状态</div><div id="reserveDetailStatus"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">评价人</div><div id="reserveDetailEvaluator"></div></div>
+                        <div><div style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">评价内容</div><div id="reserveDetailEvaluationContent"></div></div>
                     </div>
                 </div>
             </div>
@@ -7569,6 +7579,7 @@
             if (!video || !video.serverPath) return '';
             // Server mode (including Electron connected to server): streaming URL from cloud
             var srvUrl = localStorage.getItem('v2_server_url') || '';
+            if (!srvUrl && window.location.protocol.startsWith('http')) srvUrl = window.location.origin;
             if (srvUrl) {
                 return srvUrl.replace(/\/+$/, '') + '/api/videos/stream/' + (_currentDetailArtist ? _currentDetailArtist.id : 0) + '/' + encodeURIComponent(video.id);
             }
@@ -7638,7 +7649,12 @@
             playerEl.onclick = function(e) { e.stopPropagation(); };
 
             playerEl.addEventListener('canplay', function() {
-                playerEl.play().catch(function(err) {
+                playerEl.play().then(function() {
+                    if (playerEl.videoWidth === 0 && playerEl.videoHeight === 0) {
+                        playerEl.pause();
+                        showToast('该视频编码不被浏览器支持（仅声音无画面），建议转为H.264/MP4格式后重新上传', 'error');
+                    }
+                }).catch(function(err) {
                     showToast('播放失败: ' + err.message, 'error');
                 });
             }, { once: true });
@@ -8335,8 +8351,9 @@
             if (!video) return '#';
             if (video.localPath && video.localPath.startsWith('data:video/')) return video.localPath;
             if (video.serverPath) {
-                var base = (typeof CLOUD_SERVER_URL !== 'undefined' ? CLOUD_SERVER_URL : '');
-                if (base) return base + '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + (video.id || '');
+                var base = localStorage.getItem('v2_server_url') || '';
+                if (!base && window.location.protocol.startsWith('http')) base = window.location.origin;
+                if (base) return base.replace(/\/+$/, '') + '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + (video.id || '');
                 return '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + (video.id || '');
             }
             return '#';
@@ -8345,12 +8362,46 @@
         function playReserveVideo(idx) {
             var video = _currentReserveVideos[idx];
             if (!video) return;
-            var player = document.getElementById('videoPlayer');
+            var streamUrl = getReserveVideoStreamUrl(video);
+            if (!streamUrl) {
+                showToast('无法获取视频播放地址', 'error');
+                return;
+            }
+
+            var playerEl = document.getElementById('videoPlayer');
             var modal = document.getElementById('videoPlayerModal');
-            if (!player || !modal) return;
-            player.src = getReserveVideoStreamUrl(video);
+            if (!playerEl || !modal) return;
+
+            var newPlayer = playerEl.cloneNode(false);
+            playerEl.parentNode.replaceChild(newPlayer, playerEl);
+            playerEl = newPlayer;
+            playerEl.id = 'videoPlayer';
+            playerEl.controls = true;
+            playerEl.playsinline = true;
+            playerEl.style.cssText = 'max-width:95%;max-height:80%;';
+            playerEl.setAttribute('playsinline', '');
+            playerEl.setAttribute('controls', '');
+            playerEl.onclick = function(e) { e.stopPropagation(); };
+
+            playerEl.addEventListener('canplay', function() {
+                playerEl.play().then(function() {
+                    if (playerEl.videoWidth === 0 && playerEl.videoHeight === 0) {
+                        playerEl.pause();
+                        showToast('该视频编码不被浏览器支持（仅声音无画面），建议转为H.264/MP4格式后重新上传', 'error');
+                    }
+                }).catch(function(err) {
+                    showToast('播放失败: ' + err.message, 'error');
+                });
+            }, { once: true });
+
+            playerEl.addEventListener('error', function() {
+                var ve = playerEl.error;
+                showToast('视频加载失败' + (ve ? '(code=' + ve.code + ')' : ''), 'error');
+            });
+
+            playerEl.src = streamUrl;
+            playerEl.load();
             modal.style.display = 'flex';
-            player.play().catch(function() {});
         }
 
         async function uploadReserveVideo(event) {
