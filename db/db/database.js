@@ -176,6 +176,8 @@ function createTables() {
     created_at TEXT DEFAULT (datetime('now','localtime')),
     updated_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
+  try { db.run('ALTER TABLE reserve_artists ADD COLUMN linked_artist_id INTEGER DEFAULT NULL'); } catch(_) {}
+  try { db.run('ALTER TABLE artists ADD COLUMN linked_reserve_id INTEGER DEFAULT NULL'); } catch(_) {}
 }
 
 function execSelect(sql, params) {

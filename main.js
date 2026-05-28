@@ -354,6 +354,28 @@ ipcMain.handle('update-artist', (event, data) => {
       [data.name, data.avatar || '', data.status || '在岗', data.level || 'B级', data.store || '',
        posJson, data.contractStatus || '未签约', data.dailySalary || 0, data.id]
     );
+    // 状态改为"待岗" → 自动移到艺人储备库
+    if (data.status === '待岗') {
+      var rows = Database.query("SELECT * FROM artists WHERE id = ?", [data.id]);
+      if (rows && rows.length > 0) {
+        var row = rows[0];
+        var linkedId = row.linked_reserve_id || null;
+        if (linkedId) {
+          Database.query(
+            "UPDATE reserve_artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, status='待定', updated_at=datetime('now','localtime') WHERE id=?",
+            [row.name, row.avatar || '', row.gender || '', row.business_level || 'B级', row.positions || '[]', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', linkedId]
+          );
+        } else {
+          var result = Database.query(
+            "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, photos, videos, status, experience, linked_artist_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [row.name, row.avatar || '', row.gender || '', 0, '', '', row.positions || '[]', row.business_level || 'B级', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', '待定', '', row.id]
+          );
+          linkedId = result.lastInsertRowid;
+          Database.query("UPDATE artists SET linked_reserve_id = ? WHERE id = ?", [linkedId, row.id]);
+        }
+        Database.query("UPDATE artists SET status = '-1' WHERE id = ?", [data.id]);
+      }
+    }
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };

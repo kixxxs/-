@@ -1687,8 +1687,8 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="stat-card">
-                                <div class="card-title">已安排艺人数</div>
+                            <div class="stat-card" onclick="openArrangedArtistsModal()" style="cursor:pointer;">
+                                <div class="card-title">已安排艺人数 ▸</div>
                                 <div class="card-value" id="reserveArrangedCount">0</div>
                             </div>
                         </div>
@@ -1710,7 +1710,6 @@
                         <select id="reserveStatusFilter" class="form-select" style="width:auto;min-width:120px;margin-left:8px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:6px;padding:0 10px;" onchange="filterReserveArtists()">
                             <option value="">全部状态</option>
                             <option value="待定">待定</option>
-                            <option value="已安排">已安排</option>
                         </select>
                     </div>
 
@@ -1869,10 +1868,11 @@
                 </div>
                 <div class="form-group">
                     <label>状态</label>
-                    <select id="artistStatus" required>
+                    <select id="artistStatus" required onchange="toggleArtistStatusHint()">
                         <option value="在岗">在岗</option>
                         <option value="待岗">待岗</option>
                     </select>
+                    <small id="artistStatusHint" style="color:#856404;display:none;">保存后将移至艺人储备库</small>
                 </div>
                 <div class="form-group">
                     <label>业务等级</label>
@@ -2330,10 +2330,11 @@
                 </div>
                 <div class="form-group">
                     <label>状态</label>
-                    <select id="reserveArtistStatus" required>
+                    <select id="reserveArtistStatus" required onchange="toggleReserveStatusHint()">
                         <option value="待定">待定</option>
                         <option value="已安排">已安排</option>
                     </select>
+                    <small id="reserveStatusHint" style="color:#856404;display:none;">保存后将移至艺人信息库</small>
                 </div>
                 <div class="form-group">
                     <label>评价人</label>
@@ -2456,6 +2457,24 @@
                     <button type="button" class="btn btn-primary" id="reserveBatchConfirmBtn" style="display:none;" onclick="confirmReserveBatchImport()">
                         <i class="fas fa-check me-2"></i>确认导入
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 已安排艺人名单弹窗 -->
+    <div class="modal" id="arrangedArtistsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>已安排艺人名单</h2>
+                <span class="close-btn" onclick="closeModal('arrangedArtistsModal')">&times;</span>
+            </div>
+            <div style="padding:20px;">
+                <div class="table-container" style="max-height:50vh;overflow:auto;">
+                    <table class="table">
+                        <thead><tr><th>姓名</th><th>岗位</th><th>所在门店</th></tr></thead>
+                        <tbody id="arrangedArtistsTbody"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -5519,6 +5538,17 @@
             return values.join(', ');
         }
 
+        function toggleArtistStatusHint() {
+            var sel = document.getElementById('artistStatus');
+            var hint = document.getElementById('artistStatusHint');
+            if (sel && hint) hint.style.display = sel.value === '待岗' ? 'block' : 'none';
+        }
+        function toggleReserveStatusHint() {
+            var sel = document.getElementById('reserveArtistStatus');
+            var hint = document.getElementById('reserveStatusHint');
+            if (sel && hint) hint.style.display = sel.value === '已安排' ? 'block' : 'none';
+        }
+
         // 添加/编辑艺人
         async function addArtist() {
             if (!guardWrite('添加艺人')) return;
@@ -5589,7 +5619,11 @@
                 document.querySelector('#addArtistForm button[type="submit"]').textContent = '添加';
                 clearAvatar();
                 await refreshData(); renderCurrentView();
-                showToast(isEdit ? '艺人信息已更新' : '艺人添加成功', 'success');
+                if (status === '待岗') {
+                    showToast(name + ' 已移至艺人储备库', 'success');
+                } else {
+                    showToast(isEdit ? '艺人信息已更新' : '艺人添加成功', 'success');
+                }
             } else {
                 showToast((isEdit ? '更新' : '添加') + '失败：' + (result.error || '未知错误'), 'error');
             }
@@ -7308,6 +7342,7 @@
             document.getElementById('editArtistId').value = artist.id;
             document.getElementById('artistName').value = artist.name;
             document.getElementById('artistStatus').value = artist.status;
+            toggleArtistStatusHint();
             document.getElementById('artistLevel').value = artist.level;
             document.getElementById('artistContractStatus').value = artist.contractStatus;
             document.getElementById('artistDailySalary').value = artist.dailySalary;
@@ -7971,18 +8006,35 @@
             var total = list.length;
             var bPlusCount = 0;
             var pendingCount = 0;
-            var arrangedCount = 0;
             var bPlusLevels = ['S级', 'A+级', 'A级', 'B+级'];
             list.forEach(function(a) {
                 if (bPlusLevels.indexOf(a.level) >= 0) bPlusCount++;
                 if (a.status === '待定') pendingCount++;
-                if (a.status === '已安排') arrangedCount++;
             });
+            // 已安排 = 从储备库流转到艺人库的艺人（linkedReserveId 不为空）
+            var arrangedList = (appData.artists || []).filter(function(a) { return a.linkedReserveId; });
+            var arrangedCount = arrangedList.length;
             var el = function(id, val) { var e = document.getElementById(id); if (e) e.textContent = val; };
             el('reserveTotalCount', total);
             el('reserveBPlusCount', bPlusCount);
             el('reservePendingCount', pendingCount);
             el('reserveArrangedCount', arrangedCount);
+        }
+
+        function openArrangedArtistsModal() {
+            var arrangedList = (appData.artists || []).filter(function(a) { return a.linkedReserveId; });
+            var tbody = document.getElementById('arrangedArtistsTbody');
+            if (!tbody) return;
+            if (arrangedList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-secondary);padding:20px;">暂无已安排艺人</td></tr>';
+            } else {
+                tbody.innerHTML = arrangedList.map(function(a) {
+                    var posStr = '';
+                    try { var p = JSON.parse(a.positions || '[]'); posStr = Array.isArray(p) ? p.join(', ') : (a.positions || ''); } catch(_) { posStr = a.positions || ''; }
+                    return '<tr><td>' + escapeHtml(a.name) + '</td><td>' + escapeHtml(posStr) + '</td><td>' + escapeHtml(a.storeName || '') + '</td></tr>';
+                }).join('');
+            }
+            document.getElementById('arrangedArtistsModal').style.display = 'block';
         }
 
         function renderReserveArtistsList() {
@@ -8122,7 +8174,11 @@
             if (result.ok) {
                 closeModal('addReserveArtistModal');
                 await refreshData(); renderCurrentView();
-                showToast(id ? '储备艺人更新成功' : '储备艺人添加成功', 'success');
+                if (data.status === '已安排') {
+                    showToast(data.name + ' 已移至艺人信息库', 'success');
+                } else {
+                    showToast(id ? '储备艺人更新成功' : '储备艺人添加成功', 'success');
+                }
             } else {
                 showToast('操作失败：' + (result.error || '未知错误'), 'error');
             }
@@ -8147,6 +8203,7 @@
             document.getElementById('reserveArtistDailySalary').value = artist.dailySalary || '';
             document.getElementById('reserveArtistPhone').value = artist.phone || '';
             document.getElementById('reserveArtistStatus').value = artist.status || '待定';
+            toggleReserveStatusHint();
             document.getElementById('reserveArtistEvaluator').value = artist.evaluator || '';
             document.getElementById('reserveArtistEvaluationContent').value = artist.evaluationContent || '';
             if (artist.avatar) {
