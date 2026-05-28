@@ -134,16 +134,16 @@ function getAllData() {
 function addArtist(data) {
   var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
   var r = db.prepare(
-    "INSERT INTO artists (name, avatar, status, business_level, store_name, positions, sign_status, daily_salary) VALUES (?,?,?,?,?,?,?,?)"
-  ).run(data.name, data.avatar || '', data.status || '在岗', data.level || 'B级', data.store || '', posJson, data.contractStatus || '未签约', data.dailySalary || 0);
+    "INSERT INTO artists (name, avatar, status, business_level, store_name, positions, sign_status, daily_salary, phone, gender, id_card) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+  ).run(data.name, data.avatar || '', data.status || '在岗', data.level || 'B级', data.store || '', posJson, data.contractStatus || '未签约', data.dailySalary || 0, data.phone || '', data.gender || '', data.idNumber || '');
   return { id: r.lastInsertRowid };
 }
 
 function updateArtist(data) {
   var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
   db.prepare(
-    "UPDATE artists SET name=?, avatar=?, status=?, business_level=?, store_name=?, positions=?, sign_status=?, daily_salary=?, updated_at=datetime('now','localtime') WHERE id=?"
-  ).run(data.name, data.avatar || '', data.status || '在岗', data.level || 'B级', data.store || '', posJson, data.contractStatus || '未签约', data.dailySalary || 0, data.id);
+    "UPDATE artists SET name=?, avatar=?, status=?, business_level=?, store_name=?, positions=?, sign_status=?, daily_salary=?, phone=?, gender=?, id_card=?, updated_at=datetime('now','localtime') WHERE id=?"
+  ).run(data.name, data.avatar || '', data.status || '在岗', data.level || 'B级', data.store || '', posJson, data.contractStatus || '未签约', data.dailySalary || 0, data.phone || '', data.gender || '', data.idNumber || '', data.id);
   // 状态改为"待岗" → 自动同步到艺人储备库
   if (data.status === '待岗') {
     var row = db.prepare('SELECT * FROM artists WHERE id = ?').get(data.id);
@@ -399,6 +399,9 @@ function mapArtist(a) {
     position: a.positions ? JSON.parse(a.positions).join(', ') : '',
     contractStatus: a.sign_status || '未签约',
     dailySalary: a.daily_salary || 0,
+    phone: a.phone || '',
+    gender: a.gender || '',
+    idNumber: a.id_card || '',
     linkedReserveId: a.linked_reserve_id || null
   };
 }
