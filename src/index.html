@@ -7517,7 +7517,9 @@
 
         function openLightbox(index) {
             _currentPhotoIndex = index;
-            document.getElementById('lightboxImage').src = _currentPhotos[_currentPhotoIndex];
+            var photo = _currentPhotos[_currentPhotoIndex];
+            var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.serverPath || '');
+            document.getElementById('lightboxImage').src = src;
             document.getElementById('photoLightbox').style.display = 'flex';
         }
 
