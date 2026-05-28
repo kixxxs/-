@@ -8029,9 +8029,7 @@
                 tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-secondary);padding:20px;">暂无已安排艺人</td></tr>';
             } else {
                 tbody.innerHTML = arrangedList.map(function(a) {
-                    var posStr = '';
-                    try { var p = JSON.parse(a.positions || '[]'); posStr = Array.isArray(p) ? p.join(', ') : (a.positions || ''); } catch(_) { posStr = a.positions || ''; }
-                    return '<tr><td>' + escapeHtml(a.name) + '</td><td>' + escapeHtml(posStr) + '</td><td>' + escapeHtml(a.storeName || '') + '</td></tr>';
+                    return '<tr><td>' + escapeHtml(a.name) + '</td><td>' + escapeHtml(a.position || '') + '</td><td>' + escapeHtml(a.store || '') + '</td></tr>';
                 }).join('');
             }
             document.getElementById('arrangedArtistsModal').style.display = 'block';
