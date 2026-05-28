@@ -45,7 +45,7 @@ async function init() {
   saveDb();
 }
 
-var DESIRED_STORES = ['胡桃里中心城','胡桃里时代城','18般罗湖店','18般广州店','Ahouse厦门店','Ahouse无锡店','南宁见山谣','南宁滚滚','昆明滚滚','昆明Bongbong','海口苏荷'];
+var DESIRED_STORES = ['胡桃里中心城','胡桃里时代城','18般罗湖店','18般广州店','Ahouse厦门店','Ahouse无锡店','南宁见山谣','南宁滚滚','昆明滚滚','昆明Bongbong','海口苏荷','成都俏皮狗'];
 
 function syncStores() {
   // 获取当前数据库中的门店名

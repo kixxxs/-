@@ -8,7 +8,7 @@ var DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'artist_
 
 var db;
 
-var DESIRED_STORES = ['胡桃里中心城','胡桃里时代城','18般罗湖店','18般广州店','Ahouse厦门店','Ahouse无锡店','南宁见山谣','南宁滚滚','昆明滚滚','昆明Bongbong','海口苏荷'];
+var DESIRED_STORES = ['胡桃里中心城','胡桃里时代城','18般罗湖店','18般广州店','Ahouse厦门店','Ahouse无锡店','南宁见山谣','南宁滚滚','昆明滚滚','昆明Bongbong','海口苏荷','成都俏皮狗'];
 
 function init() {
   var dbDir = path.dirname(DB_PATH);
