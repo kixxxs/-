@@ -7431,10 +7431,10 @@
                 }
             }
 
-            // Age from ID card
+            // Age from ID card — from artist first, fallback to contract
+            var idNum = artist.idNumber || (contract && contract.idNumber) || '';
             var ageText = '--';
-            if (contract && contract.idNumber && contract.idNumber.length >= 14) {
-                var idNum = contract.idNumber;
+            if (idNum && idNum.length >= 14) {
                 var birthYear = parseInt(idNum.substring(6, 10), 10);
                 var birthMonth = parseInt(idNum.substring(10, 12), 10);
                 var birthDay = parseInt(idNum.substring(12, 14), 10);
@@ -7449,8 +7449,8 @@
             }
             document.getElementById('detailAge').textContent = ageText;
 
-            // Phone from contract — clickable tel: link
-            var phoneVal = (contract && contract.phone) ? contract.phone.trim() : '';
+            // Phone — from artist first, fallback to contract
+            var phoneVal = (artist.phone || (contract && contract.phone)) ? (artist.phone || (contract && contract.phone)).trim() : '';
             var phoneEl = document.getElementById('detailPhone');
             if (phoneVal && /[\d+\-()]/.test(phoneVal)) {
                 var digits = phoneVal.replace(/[^\d+]/g, '');
@@ -7507,7 +7507,8 @@
             _currentPhotos.forEach(function(photo, idx) {
                 var thumb = document.createElement('div');
                 thumb.style.cssText = 'width:120px;height:120px;overflow:hidden;border-radius:8px;cursor:pointer;position:relative;border:2px solid var(--border-color);';
-                thumb.innerHTML = '<img src="' + escapeHtml(photo) + '" style="width:100%;height:100%;object-fit:cover;">' +
+                var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.serverPath || '');
+                thumb.innerHTML = '<img src="' + escapeHtml(src) + '" style="width:100%;height:100%;object-fit:cover;">' +
                     '<button style="position:absolute;top:4px;right:4px;background:rgba(255,0,0,0.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;line-height:1;" onclick="event.stopPropagation();deletePhoto(' + idx + ')">&times;</button>';
                 thumb.addEventListener('click', function() { openLightbox(idx); });
                 gallery.appendChild(thumb);
