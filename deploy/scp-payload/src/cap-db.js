@@ -32,6 +32,8 @@ var CapDB = (function() {
     try { db.run("ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0"); } catch(_) {}
     db.run("CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL DEFAULT '', file_name TEXT DEFAULT '', file_path TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now','localtime')))");
     db.run("CREATE TABLE IF NOT EXISTS reserve_artists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, avatar TEXT DEFAULT '', gender TEXT DEFAULT '', age INTEGER DEFAULT 0, height TEXT DEFAULT '', region TEXT DEFAULT '', positions TEXT DEFAULT '[]', business_level TEXT DEFAULT 'C级', daily_salary REAL DEFAULT 0, phone TEXT DEFAULT '', status TEXT DEFAULT '待定', evaluator TEXT DEFAULT '', evaluation_content TEXT DEFAULT '', experience TEXT DEFAULT '', photos TEXT DEFAULT '[]', videos TEXT DEFAULT '[]', created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')))");
+    try { db.run("ALTER TABLE reserve_artists ADD COLUMN linked_artist_id INTEGER DEFAULT NULL"); } catch(_) {}
+    try { db.run("ALTER TABLE artists ADD COLUMN linked_reserve_id INTEGER DEFAULT NULL"); } catch(_) {}
   }
 
   function execSelect(sql, params) {
@@ -178,6 +180,7 @@ var CapDB = (function() {
       })(),
       contractStatus: row.sign_status || '未签约',
       dailySalary: row.daily_salary || 0,
+      linkedReserveId: row.linked_reserve_id || null,
       gender: row.gender || '',
       idNumber: row.id_card || '',
       phone: row.phone || '',
@@ -332,6 +335,27 @@ var CapDB = (function() {
       [artistData.name, artistData.avatar || '', artistData.status || '在岗', artistData.level || 'B级',
        artistData.store || '', posJson, artistData.contractStatus || '未签约', artistData.dailySalary || 0, artistData.id]
     );
+    // 状态改为"待岗" → 自动同步到艺人储备库
+    if (artistData.status === '待岗') {
+      var rows = query('SELECT * FROM artists WHERE id = ?', [artistData.id]);
+      if (rows && rows.length > 0) {
+        var row = rows[0];
+        var linkedId = row.linked_reserve_id || null;
+        if (linkedId) {
+          query(
+            "UPDATE reserve_artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, status='待定', updated_at=datetime('now','localtime') WHERE id=?",
+            [row.name, row.avatar || '', row.gender || '', row.business_level || 'B级', row.positions || '[]', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', linkedId]
+          );
+        } else {
+          var result = query(
+            "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, photos, videos, status, experience, linked_artist_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [row.name, row.avatar || '', row.gender || '', 0, '', '', row.positions || '[]', row.business_level || 'B级', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', '待定', '', row.id]
+          );
+          query('UPDATE artists SET linked_reserve_id = ? WHERE id = ?', [result.lastInsertRowid, row.id]);
+        }
+        query("UPDATE artists SET status = '-1' WHERE id = ?", [artistData.id]);
+      }
+    }
     return { ok: true };
   }
 
@@ -517,6 +541,27 @@ var CapDB = (function() {
        posJson, data.level || 'C级', data.dailySalary || 0, data.phone || '', data.status || '待定',
        data.evaluator || '', data.evaluationContent || '', data.experience || '', data.id]
     );
+    // 状态改为"已安排" → 自动同步到艺人信息库
+    if (data.status === '已安排') {
+      var rows = query('SELECT * FROM reserve_artists WHERE id = ?', [data.id]);
+      if (rows && rows.length > 0) {
+        var r = rows[0];
+        var linkedId = r.linked_artist_id || null;
+        if (linkedId) {
+          query(
+            "UPDATE artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, status='在岗', updated_at=datetime('now','localtime') WHERE id=?",
+            [r.name, r.avatar || '', r.gender || '', r.business_level || 'B+级', r.positions || '[]', r.daily_salary || 0, r.phone || '', r.photos || '[]', r.videos || '[]', linkedId]
+          );
+        } else {
+          var result = query(
+            "INSERT INTO artists (name, avatar, gender, store_name, positions, business_level, sign_status, daily_salary, phone, photos, videos, status, linked_reserve_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [r.name, r.avatar || '', r.gender || '', '', r.positions || '[]', r.business_level || 'B+级', '未签约', r.daily_salary || 0, r.phone || '', r.photos || '[]', r.videos || '[]', '在岗', r.id]
+          );
+          query('UPDATE reserve_artists SET linked_artist_id = ? WHERE id = ?', [result.lastInsertRowid, r.id]);
+        }
+        query("UPDATE reserve_artists SET status = '-1' WHERE id = ?", [data.id]);
+      }
+    }
     return { ok: true };
   }
 

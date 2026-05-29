@@ -4,7 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 
-var DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'db', 'db', 'artist_data.db');
+var DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'artist_data.db');
 
 var db;
 
@@ -43,6 +43,8 @@ function createTables() {
   try { db.exec("ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0"); } catch(_) {}
   db.exec("CREATE TABLE IF NOT EXISTS announcements (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    title TEXT NOT NULL DEFAULT '',\n    file_name TEXT DEFAULT '',\n    file_path TEXT DEFAULT '',\n    created_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
   db.exec("CREATE TABLE IF NOT EXISTS reserve_artists (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    avatar TEXT DEFAULT '',\n    gender TEXT DEFAULT '',\n    age INTEGER DEFAULT 0,\n    height TEXT DEFAULT '',\n    region TEXT DEFAULT '',\n    positions TEXT DEFAULT '[]',\n    business_level TEXT DEFAULT 'C级',\n    daily_salary REAL DEFAULT 0,\n    phone TEXT DEFAULT '',\n    status TEXT DEFAULT '待定',\n    evaluator TEXT DEFAULT '',\n    evaluation_content TEXT DEFAULT '',\n    experience TEXT DEFAULT '',\n    photos TEXT DEFAULT '[]',\n    videos TEXT DEFAULT '[]',\n    created_at TEXT DEFAULT (datetime('now','localtime')),\n    updated_at TEXT DEFAULT (datetime('now','localtime'))\n  )");
+  try { db.exec("ALTER TABLE reserve_artists ADD COLUMN linked_artist_id INTEGER DEFAULT NULL"); } catch(_) {}
+  try { db.exec("ALTER TABLE artists ADD COLUMN linked_reserve_id INTEGER DEFAULT NULL"); } catch(_) {}
 }
 
 function syncStores() {
@@ -142,6 +144,14 @@ function updateArtist(data) {
   db.prepare(
     "UPDATE artists SET name=?, avatar=?, status=?, business_level=?, store_name=?, positions=?, sign_status=?, daily_salary=?, updated_at=datetime('now','localtime') WHERE id=?"
   ).run(data.name, data.avatar || '', data.status || '在岗', data.level || 'B级', data.store || '', posJson, data.contractStatus || '未签约', data.dailySalary || 0, data.id);
+  // 状态改为"待岗" → 自动同步到艺人储备库
+  if (data.status === '待岗') {
+    var row = db.prepare('SELECT * FROM artists WHERE id = ?').get(data.id);
+    if (row) {
+      syncArtistToReserve(row);
+      db.prepare("UPDATE artists SET status = '-1', updated_at=datetime('now','localtime') WHERE id = ?").run(data.id);
+    }
+  }
   return {};
 }
 
@@ -310,6 +320,58 @@ function mapReserveArtist(a) {
   };
 }
 
+// ===== 双向同步：艺人信息库 ↔ 艺人储备库 =====
+
+function syncReserveToArtist(reserveRow) {
+  var posStr = '';
+  try { posStr = JSON.parse(reserveRow.positions || '[]').join(', '); } catch(_) {}
+  var linkedId = reserveRow.linked_artist_id || null;
+  if (linkedId) {
+    // Update existing linked artist (only sync shared fields, don't overwrite store/sign_status)
+    db.prepare(
+      "UPDATE artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, status='在岗', updated_at=datetime('now','localtime') WHERE id=?"
+    ).run(reserveRow.name, reserveRow.avatar || '', reserveRow.gender || '',
+      reserveRow.business_level || 'B+级', reserveRow.positions || '[]',
+      reserveRow.daily_salary || 0, reserveRow.phone || '',
+      reserveRow.photos || '[]', reserveRow.videos || '[]', linkedId);
+    return linkedId;
+  }
+  // Create new artist record
+  var result = db.prepare(
+    "INSERT INTO artists (name, avatar, gender, store_name, positions, business_level, sign_status, daily_salary, phone, photos, videos, status, linked_reserve_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).run(reserveRow.name, reserveRow.avatar || '', reserveRow.gender || '', '',
+    reserveRow.positions || '[]', reserveRow.business_level || 'B+级', '未签约',
+    reserveRow.daily_salary || 0, reserveRow.phone || '',
+    reserveRow.photos || '[]', reserveRow.videos || '[]', '在岗', reserveRow.id);
+  // Write link back to reserve record
+  db.prepare('UPDATE reserve_artists SET linked_artist_id=? WHERE id=?').run(result.lastInsertRowid, reserveRow.id);
+  return result.lastInsertRowid;
+}
+
+function syncArtistToReserve(artistRow) {
+  var linkedId = artistRow.linked_reserve_id || null;
+  if (linkedId) {
+    // Update existing linked reserve record
+    db.prepare(
+      "UPDATE reserve_artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, status='待定', updated_at=datetime('now','localtime') WHERE id=?"
+    ).run(artistRow.name, artistRow.avatar || '', artistRow.gender || '',
+      artistRow.business_level || 'B级', artistRow.positions || '[]',
+      artistRow.daily_salary || 0, artistRow.phone || '',
+      artistRow.photos || '[]', artistRow.videos || '[]', linkedId);
+    return linkedId;
+  }
+  // Create new reserve record
+  var result = db.prepare(
+    "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, photos, videos, status, experience, linked_artist_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).run(artistRow.name, artistRow.avatar || '', artistRow.gender || '', 0, '', '',
+    artistRow.positions || '[]', artistRow.business_level || 'B级',
+    artistRow.daily_salary || 0, artistRow.phone || '',
+    artistRow.photos || '[]', artistRow.videos || '[]', '待定', '', artistRow.id);
+  // Write link back to artist record
+  db.prepare('UPDATE artists SET linked_reserve_id=? WHERE id=?').run(result.lastInsertRowid, artistRow.id);
+  return result.lastInsertRowid;
+}
+
 function saveAvatar(dataUrl, artistName) {
   var matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
   if (!matches) throw new Error('无效的图片格式');
@@ -336,7 +398,8 @@ function mapArtist(a) {
     store: a.store_name || '',
     position: a.positions ? JSON.parse(a.positions).join(', ') : '',
     contractStatus: a.sign_status || '未签约',
-    dailySalary: a.daily_salary || 0
+    dailySalary: a.daily_salary || 0,
+    linkedReserveId: a.linked_reserve_id || null
   };
 }
 
@@ -553,6 +616,14 @@ function updateReserveArtist(data) {
   ).run(data.name, data.avatar || '', data.gender || '', data.age || 0, data.height || '', data.region || '',
     posJson, data.level || 'C级', data.dailySalary || 0, data.phone || '', data.status || '待定',
     data.evaluator || '', data.evaluationContent || '', data.experience || '', data.id);
+  // 状态改为"已安排" → 自动同步到艺人信息库
+  if (data.status === '已安排') {
+    var row = db.prepare('SELECT * FROM reserve_artists WHERE id = ?').get(data.id);
+    if (row) {
+      syncReserveToArtist(row);
+      db.prepare("UPDATE reserve_artists SET status = '-1', updated_at=datetime('now','localtime') WHERE id = ?").run(data.id);
+    }
+  }
 }
 
 function deleteReserveArtist(id) {

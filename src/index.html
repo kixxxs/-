@@ -1707,10 +1707,6 @@
                             <input type="text" id="reserveSearchInput" class="artist-search-input"
                                 placeholder="搜索姓名、岗位、地区..." oninput="filterReserveArtists()">
                         </div>
-                        <select id="reserveStatusFilter" class="form-select" style="width:auto;min-width:120px;margin-left:8px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:6px;padding:0 10px;" onchange="filterReserveArtists()">
-                            <option value="">全部状态</option>
-                            <option value="待定">待定</option>
-                        </select>
                     </div>
 
                     <!-- 艺人列表 -->
@@ -7431,20 +7427,24 @@
                 }
             }
 
-            // Age from ID card — from artist first, fallback to contract
-            var idNum = artist.idNumber || (contract && contract.idNumber) || '';
+            // Age — from stored age first, fallback to ID card calculation
             var ageText = '--';
-            if (idNum && idNum.length >= 14) {
-                var birthYear = parseInt(idNum.substring(6, 10), 10);
-                var birthMonth = parseInt(idNum.substring(10, 12), 10);
-                var birthDay = parseInt(idNum.substring(12, 14), 10);
-                if (birthYear > 1900) {
-                    var today = new Date();
-                    var age = today.getFullYear() - birthYear;
-                    if (today.getMonth() + 1 < birthMonth || (today.getMonth() + 1 === birthMonth && today.getDate() < birthDay)) {
-                        age--;
+            if (artist.age && artist.age > 0) {
+                ageText = artist.age + ' 岁';
+            } else {
+                var idNum = artist.idNumber || (contract && contract.idNumber) || '';
+                if (idNum && idNum.length >= 14) {
+                    var birthYear = parseInt(idNum.substring(6, 10), 10);
+                    var birthMonth = parseInt(idNum.substring(10, 12), 10);
+                    var birthDay = parseInt(idNum.substring(12, 14), 10);
+                    if (birthYear > 1900) {
+                        var today = new Date();
+                        var age = today.getFullYear() - birthYear;
+                        if (today.getMonth() + 1 < birthMonth || (today.getMonth() + 1 === birthMonth && today.getDate() < birthDay)) {
+                            age--;
+                        }
+                        ageText = age + ' 岁';
                     }
-                    ageText = age + ' 岁';
                 }
             }
             document.getElementById('detailAge').textContent = ageText;
@@ -8042,18 +8042,12 @@
         function renderReserveArtistsList() {
             var list = appData.reserveArtists || [];
             var searchTerm = (document.getElementById('reserveSearchInput') || {}).value || '';
-            var statusFilter = (document.getElementById('reserveStatusFilter') || {}).value || '';
             if (searchTerm.trim()) {
                 var kw = searchTerm.trim().toLowerCase();
                 list = list.filter(function(a) {
                     return (a.name || '').toLowerCase().indexOf(kw) >= 0 ||
                            (a.position || '').toLowerCase().indexOf(kw) >= 0 ||
                            (a.region || '').toLowerCase().indexOf(kw) >= 0;
-                });
-            }
-            if (statusFilter) {
-                list = list.filter(function(a) {
-                    return a.status === statusFilter;
                 });
             }
             var tbody = document.getElementById('reserveArtistsList');
@@ -8160,8 +8154,7 @@
                 status: document.getElementById('reserveArtistStatus').value,
                 evaluator: document.getElementById('reserveArtistEvaluator').value.trim(),
                 evaluationContent: document.getElementById('reserveArtistEvaluationContent').value.trim(),
-                avatar: document.getElementById('reserveArtistAvatar').value,
-                experience: ''
+                avatar: document.getElementById('reserveArtistAvatar').value
             };
             if (!data.name) { showToast('请输入姓名', 'error'); return; }
             if (!data.position) { showToast('请选择岗位', 'error'); return; }

@@ -34,6 +34,7 @@ var CapDB = (function() {
     db.run("CREATE TABLE IF NOT EXISTS reserve_artists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, avatar TEXT DEFAULT '', gender TEXT DEFAULT '', age INTEGER DEFAULT 0, height TEXT DEFAULT '', region TEXT DEFAULT '', positions TEXT DEFAULT '[]', business_level TEXT DEFAULT 'C级', daily_salary REAL DEFAULT 0, phone TEXT DEFAULT '', status TEXT DEFAULT '待定', evaluator TEXT DEFAULT '', evaluation_content TEXT DEFAULT '', experience TEXT DEFAULT '', photos TEXT DEFAULT '[]', videos TEXT DEFAULT '[]', created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')))");
     try { db.run("ALTER TABLE reserve_artists ADD COLUMN linked_artist_id INTEGER DEFAULT NULL"); } catch(_) {}
     try { db.run("ALTER TABLE artists ADD COLUMN linked_reserve_id INTEGER DEFAULT NULL"); } catch(_) {}
+    try { db.run("ALTER TABLE artists ADD COLUMN age INTEGER DEFAULT 0"); } catch(_) {}
   }
 
   function execSelect(sql, params) {
@@ -183,6 +184,7 @@ var CapDB = (function() {
       linkedReserveId: row.linked_reserve_id || null,
       gender: row.gender || '',
       idNumber: row.id_card || '',
+      age: row.age || 0,
       phone: row.phone || '',
       photos: row.photos || '[]',
       videos: row.videos || '[]'
@@ -330,16 +332,17 @@ var CapDB = (function() {
     var posJson = JSON.stringify(
       (artistData.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; })
     );
-    // Preserve existing phone/gender/id_card when not provided (avoid wiping synced data)
-    var existing = query('SELECT phone, gender, id_card FROM artists WHERE id = ?', [artistData.id]);
+    // Preserve existing phone/gender/id_card/age when not provided (avoid wiping synced data)
+    var existing = query('SELECT phone, gender, id_card, age FROM artists WHERE id = ?', [artistData.id]);
     var existingRow = (existing && existing.length > 0) ? existing[0] : null;
     var phone = artistData.phone || (existingRow ? existingRow.phone || '' : '');
     var gender = artistData.gender || (existingRow ? existingRow.gender || '' : '');
     var idCard = artistData.idNumber || (existingRow ? existingRow.id_card || '' : '');
+    var age = artistData.age || (existingRow ? existingRow.age || 0 : 0);
     query(
-      "UPDATE artists SET name=?, avatar=?, status=?, business_level=?, store_name=?, positions=?, sign_status=?, daily_salary=?, phone=?, gender=?, id_card=?, updated_at=datetime('now','localtime') WHERE id=?",
+      "UPDATE artists SET name=?, avatar=?, status=?, business_level=?, store_name=?, positions=?, sign_status=?, daily_salary=?, phone=?, gender=?, id_card=?, age=?, updated_at=datetime('now','localtime') WHERE id=?",
       [artistData.name, artistData.avatar || '', artistData.status || '在岗', artistData.level || 'B级',
-       artistData.store || '', posJson, artistData.contractStatus || '未签约', artistData.dailySalary || 0, phone, gender, idCard, artistData.id]
+       artistData.store || '', posJson, artistData.contractStatus || '未签约', artistData.dailySalary || 0, phone, gender, idCard, age, artistData.id]
     );
     // 状态改为"待岗" → 自动同步到艺人储备库
     if (artistData.status === '待岗') {
@@ -354,13 +357,13 @@ var CapDB = (function() {
         }
         if (linkedId) {
           query(
-            "UPDATE reserve_artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, experience=?, status='待定', updated_at=datetime('now','localtime') WHERE id=?",
-            [row.name, row.avatar || '', row.gender || '', row.business_level || 'B级', row.positions || '[]', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', prevExperience, linkedId]
+            "UPDATE reserve_artists SET name=?, avatar=?, gender=?, age=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, experience=?, status='待定', updated_at=datetime('now','localtime') WHERE id=?",
+            [row.name, row.avatar || '', row.gender || '', row.age || 0, row.business_level || 'B级', row.positions || '[]', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', prevExperience, linkedId]
           );
         } else {
           var result = query(
             "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, photos, videos, status, experience, linked_artist_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [row.name, row.avatar || '', row.gender || '', 0, '', '', row.positions || '[]', row.business_level || 'B级', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', '待定', prevExperience, row.id]
+            [row.name, row.avatar || '', row.gender || '', row.age || 0, '', '', row.positions || '[]', row.business_level || 'B级', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', '待定', prevExperience, row.id]
           );
           query('UPDATE artists SET linked_reserve_id = ? WHERE id = ?', [result.lastInsertRowid, row.id]);
         }
@@ -546,11 +549,14 @@ var CapDB = (function() {
     var posJson = JSON.stringify(
       (data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; })
     );
+    // Preserve existing experience when not provided (avoid wiping on status change)
+    var existingExp = query('SELECT experience FROM reserve_artists WHERE id = ?', [data.id]);
+    var experience = data.experience || (existingExp && existingExp.length > 0 ? existingExp[0].experience || '' : '');
     query(
       "UPDATE reserve_artists SET name=?, avatar=?, gender=?, age=?, height=?, region=?, positions=?, business_level=?, daily_salary=?, phone=?, status=?, evaluator=?, evaluation_content=?, experience=?, updated_at=datetime('now','localtime') WHERE id=?",
       [data.name, data.avatar || '', data.gender || '', data.age || 0, data.height || '', data.region || '',
        posJson, data.level || 'C级', data.dailySalary || 0, data.phone || '', data.status || '待定',
-       data.evaluator || '', data.evaluationContent || '', data.experience || '', data.id]
+       data.evaluator || '', data.evaluationContent || '', experience, data.id]
     );
     // 状态改为"已安排" → 自动同步到艺人信息库
     if (data.status === '已安排') {
@@ -560,13 +566,13 @@ var CapDB = (function() {
         var linkedId = r.linked_artist_id || null;
         if (linkedId) {
           query(
-            "UPDATE artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, status='在岗', updated_at=datetime('now','localtime') WHERE id=?",
-            [r.name, r.avatar || '', r.gender || '', r.business_level || 'B+级', r.positions || '[]', r.daily_salary || 0, r.phone || '', r.photos || '[]', r.videos || '[]', linkedId]
+            "UPDATE artists SET name=?, avatar=?, gender=?, age=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, status='在岗', updated_at=datetime('now','localtime') WHERE id=?",
+            [r.name, r.avatar || '', r.gender || '', r.age || 0, r.business_level || 'B+级', r.positions || '[]', r.daily_salary || 0, r.phone || '', r.photos || '[]', r.videos || '[]', linkedId]
           );
         } else {
           var result = query(
-            "INSERT INTO artists (name, avatar, gender, store_name, positions, business_level, sign_status, daily_salary, phone, photos, videos, status, linked_reserve_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [r.name, r.avatar || '', r.gender || '', '', r.positions || '[]', r.business_level || 'B+级', '未签约', r.daily_salary || 0, r.phone || '', r.photos || '[]', r.videos || '[]', '在岗', r.id]
+            "INSERT INTO artists (name, avatar, gender, age, store_name, positions, business_level, sign_status, daily_salary, phone, photos, videos, status, linked_reserve_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [r.name, r.avatar || '', r.gender || '', r.age || 0, '', r.positions || '[]', r.business_level || 'B+级', '未签约', r.daily_salary || 0, r.phone || '', r.photos || '[]', r.videos || '[]', '在岗', r.id]
           );
           query('UPDATE reserve_artists SET linked_artist_id = ? WHERE id = ?', [result.lastInsertRowid, r.id]);
         }
