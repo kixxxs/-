@@ -349,10 +349,16 @@ ipcMain.handle('delete-artist', (event, id) => {
 ipcMain.handle('update-artist', (event, data) => {
   try {
     var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
+    // Preserve existing phone/gender/id_card when not provided (avoid wiping synced data)
+    var existing = Database.query("SELECT phone, gender, id_card FROM artists WHERE id = ?", [data.id]);
+    var existingRow = (existing && existing.length > 0) ? existing[0] : null;
+    var phone = data.phone || (existingRow ? existingRow.phone || '' : '');
+    var gender = data.gender || (existingRow ? existingRow.gender || '' : '');
+    var idCard = data.idNumber || (existingRow ? existingRow.id_card || '' : '');
     Database.query(
-      "UPDATE artists SET name=?, avatar=?, status=?, business_level=?, store_name=?, positions=?, sign_status=?, daily_salary=?, updated_at=datetime('now','localtime') WHERE id=?",
+      "UPDATE artists SET name=?, avatar=?, status=?, business_level=?, store_name=?, positions=?, sign_status=?, daily_salary=?, phone=?, gender=?, id_card=?, updated_at=datetime('now','localtime') WHERE id=?",
       [data.name, data.avatar || '', data.status || '在岗', data.level || 'B级', data.store || '',
-       posJson, data.contractStatus || '未签约', data.dailySalary || 0, data.id]
+       posJson, data.contractStatus || '未签约', data.dailySalary || 0, phone, gender, idCard, data.id]
     );
     // 状态改为"待岗" → 自动移到艺人储备库
     if (data.status === '待岗') {
@@ -360,15 +366,21 @@ ipcMain.handle('update-artist', (event, data) => {
       if (rows && rows.length > 0) {
         var row = rows[0];
         var linkedId = row.linked_reserve_id || null;
+        // Preserve experience from linked reserve record
+        var prevExperience = '';
+        if (linkedId) {
+          var prev = Database.query("SELECT experience FROM reserve_artists WHERE id = ?", [linkedId]);
+          if (prev && prev.length > 0) prevExperience = prev[0].experience || '';
+        }
         if (linkedId) {
           Database.query(
-            "UPDATE reserve_artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, status='待定', updated_at=datetime('now','localtime') WHERE id=?",
-            [row.name, row.avatar || '', row.gender || '', row.business_level || 'B级', row.positions || '[]', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', linkedId]
+            "UPDATE reserve_artists SET name=?, avatar=?, gender=?, business_level=?, positions=?, daily_salary=?, phone=?, photos=?, videos=?, experience=?, status='待定', updated_at=datetime('now','localtime') WHERE id=?",
+            [row.name, row.avatar || '', row.gender || '', row.business_level || 'B级', row.positions || '[]', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', prevExperience, linkedId]
           );
         } else {
           var result = Database.query(
             "INSERT INTO reserve_artists (name, avatar, gender, age, height, region, positions, business_level, daily_salary, phone, photos, videos, status, experience, linked_artist_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [row.name, row.avatar || '', row.gender || '', 0, '', '', row.positions || '[]', row.business_level || 'B级', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', '待定', '', row.id]
+            [row.name, row.avatar || '', row.gender || '', 0, '', '', row.positions || '[]', row.business_level || 'B级', row.daily_salary || 0, row.phone || '', row.photos || '[]', row.videos || '[]', '待定', prevExperience, row.id]
           );
           linkedId = result.lastInsertRowid;
           Database.query("UPDATE artists SET linked_reserve_id = ? WHERE id = ?", [linkedId, row.id]);
