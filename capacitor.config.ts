@@ -6,6 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'www',
   server: {
     androidScheme: 'http',
+    iosScheme: 'http',
   },
   plugins: {
     SplashScreen: {
@@ -21,6 +22,20 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true,
+  },
+  ios: {
+    allowsLinkPreview: false,
+    contentInset: 'automatic',
+    infoPlist: {
+      NSAppTransportSecurity: {
+        NSExceptionDomains: {
+          '106.53.6.92': {
+            NSExceptionAllowsInsecureHTTPLoads: true,
+            NSIncludesSubdomains: false,
+          }
+        }
+      }
+    }
   },
 };
 

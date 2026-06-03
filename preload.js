@@ -27,5 +27,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addAnnouncement: (data) => ipcRenderer.invoke('add-announcement', data),
   deleteAnnouncement: (id) => ipcRenderer.invoke('delete-announcement', id),
   readAnnouncementFile: (filePath) => ipcRenderer.invoke('read-announcement-file', filePath),
-  isDesktop: true
+  isDesktop: true,
+  // Update APIs
+  checkForUpdate: function() { return ipcRenderer.invoke('check-for-update'); },
+  downloadUpdate: function() { return ipcRenderer.invoke('download-update'); },
+  quitAndInstall: function() { return ipcRenderer.invoke('quit-and-install'); },
+  onUpdateStatus: function(callback) {
+    ipcRenderer.on('update-status', function(event, data) { callback(data); });
+  },
+  removeUpdateListener: function() {
+    ipcRenderer.removeAllListeners('update-status');
+  },
+  getArtistMedia: function(artistId) { return ipcRenderer.invoke('get-artist-media', artistId); }
 });

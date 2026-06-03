@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, protocol, net } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -101,8 +102,57 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+  setupAutoUpdater();
   await Database.init();
 });
+
+// ===== Auto Updater =====
+
+function setupAutoUpdater() {
+  autoUpdater.logger = {
+    info: function(msg) { console.log('[Updater] ' + msg); },
+    warn: function(msg) { console.warn('[Updater] ' + msg); },
+    error: function(msg) { console.error('[Updater] ' + msg); }
+  };
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', function() {
+    sendUpdateStatus('checking');
+  });
+
+  autoUpdater.on('update-available', function(info) {
+    sendUpdateStatus('available', info);
+  });
+
+  autoUpdater.on('update-not-available', function(info) {
+    sendUpdateStatus('not-available', info);
+  });
+
+  autoUpdater.on('download-progress', function(progress) {
+    sendUpdateStatus('progress', { percent: progress.percent });
+  });
+
+  autoUpdater.on('update-downloaded', function(info) {
+    sendUpdateStatus('downloaded', info);
+  });
+
+  autoUpdater.on('error', function(err) {
+    sendUpdateStatus('error', { message: err.message });
+  });
+
+  setTimeout(function() {
+    autoUpdater.checkForUpdates().catch(function(err) {
+      console.error('[Updater] Check failed:', err.message);
+    });
+  }, 5000);
+}
+
+function sendUpdateStatus(status, info) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', { status: status, info: info || {} });
+  }
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -230,7 +280,7 @@ ipcMain.handle('select-and-read-csv', async () => {
 
 ipcMain.handle('get-init-data', () => {
   try {
-    const artists = Database.query("SELECT * FROM artists WHERE COALESCE(status,'') != '-1'");
+    const artists = Database.query("SELECT id,name,avatar,status,business_level,store_name,positions,sign_status,daily_salary,linked_reserve_id,gender,id_card,age,phone FROM artists WHERE COALESCE(status,'') != '-1'");
     const contracts = Database.query('SELECT * FROM contracts');
     const evaluations = Database.query('SELECT * FROM evaluations ORDER BY evaluated_at DESC');
     const stores = Database.query('SELECT * FROM stores');
@@ -245,8 +295,8 @@ ipcMain.handle('get-init-data', () => {
             id: a.id,
             name: a.name,
             avatar: a.avatar || 'https://picsum.photos/id/' + (a.id + 10) + '/40/40',
-            photos: a.photos || '[]',
-            videos: a.videos || '[]',
+            photos: '[]',
+            videos: '[]',
             status: a.status || '在岗',
             level: a.business_level || 'B级',
             store: a.store_name || '',
@@ -679,6 +729,32 @@ ipcMain.handle('read-announcement-file', async (event, filePath) => {
     var base64 = buffer.toString('base64');
     return { ok: true, data: 'data:application/pdf;base64,' + base64 };
   } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// ===== Update IPC handlers =====
+
+ipcMain.handle('check-for-update', function() {
+  return autoUpdater.checkForUpdates();
+});
+
+ipcMain.handle('download-update', function() {
+  return autoUpdater.downloadUpdate();
+});
+
+ipcMain.handle('quit-and-install', function() {
+  autoUpdater.quitAndInstall();
+});
+
+// ===== Artist media lazy-load =====
+
+ipcMain.handle('get-artist-media', function(event, artistId) {
+  try {
+    var rows = Database.query('SELECT photos, videos FROM artists WHERE id = ?', [artistId]);
+    if (!rows || rows.length === 0) return { ok: true, data: { photos: '[]', videos: '[]' } };
+    return { ok: true, data: { photos: rows[0].photos || '[]', videos: rows[0].videos || '[]' } };
+  } catch(err) {
     return { ok: false, error: err.message };
   }
 });

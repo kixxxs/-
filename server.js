@@ -92,6 +92,83 @@ function broadcast(eventType, payload) {
     }
 }
 
+// ===== Version / Update endpoint (public) =====
+
+function getVersionInfo() {
+  var infoPath = path.join(ROOT, 'updates', 'version-info.json');
+  if (fs.existsSync(infoPath)) {
+    try { return JSON.parse(fs.readFileSync(infoPath, 'utf-8')); } catch(_) {}
+  }
+  // Fallback: parse latest.yml for desktop version
+  var result = { desktop: null, android: null, ios: null };
+  var latestYml = path.join(ROOT, 'updates', 'latest.yml');
+  if (fs.existsSync(latestYml)) {
+    var yml = fs.readFileSync(latestYml, 'utf-8');
+    var vMatch = yml.match(/^version:\s*(.+)$/m);
+    if (vMatch) result.desktop = { version: vMatch[1].trim() };
+  }
+  // Check for APK
+  var apkPath = path.join(ROOT, 'updates', 'artist-manager.apk');
+  if (fs.existsSync(apkPath)) {
+    var apkStat = fs.statSync(apkPath);
+    result.android = {
+      versionCode: result.android ? result.android.versionCode : 1,
+      versionName: result.desktop ? result.desktop.version : '1.0.0',
+      apkUrl: '/updates/artist-manager.apk',
+      apkSize: apkStat.size
+    };
+  }
+  // Check for iOS manifest
+  var plistPath = path.join(ROOT, 'updates', 'manifest.plist');
+  if (fs.existsSync(plistPath)) {
+    var plist = fs.readFileSync(plistPath, 'utf-8');
+    var vMatch2 = plist.match(/<key>bundle-version<\/key>\s*<string>([^<]+)<\/string>/);
+    var ipaPath = path.join(ROOT, 'updates', 'artist-manager.ipa');
+    var ipaSize = 0;
+    if (fs.existsSync(ipaPath)) { ipaSize = fs.statSync(ipaPath).size; }
+    result.ios = {
+      version: vMatch2 ? vMatch2[1].trim() : '1.0.0',
+      ipaUrl: '/updates/artist-manager.ipa',
+      ipaSize: ipaSize
+    };
+  }
+  return result;
+}
+
+app.get('/api/version', function(req, res) {
+  try {
+    res.json({ ok: true, data: getVersionInfo() });
+  } catch(err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ===== Static file serving for update artifacts =====
+
+var updatesDir = path.join(ROOT, 'updates');
+if (!fs.existsSync(updatesDir)) { fs.mkdirSync(updatesDir, { recursive: true }); }
+app.use('/updates', express.static(updatesDir, {
+  maxAge: 0,
+  setHeaders: function(res, filePath) {
+    if (filePath.endsWith('.yml')) {
+      res.setHeader('Content-Type', 'text/yaml; charset=utf-8');
+    } else if (filePath.endsWith('.plist')) {
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    }
+  }
+}));
+
+// ===== Artist media lazy-load =====
+
+app.get('/api/artists/:id/media', authMiddleware, function(req, res) {
+  try {
+    var media = db.getArtistMedia(parseInt(req.params.id, 10));
+    res.json({ ok: true, data: media });
+  } catch(err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 // ===== Login =====
 app.post('/api/login', function(req, res) {
     var ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -346,14 +423,16 @@ app.get('/api/videos/stream/:artistId/:videoId', function(req, res) {
                 'Content-Range': 'bytes ' + start + '-' + end + '/' + fileSize,
                 'Accept-Ranges': 'bytes',
                 'Content-Length': chunkSize,
-                'Content-Type': contentType
+                'Content-Type': contentType,
+                'Cache-Control': 'public, max-age=86400'
             });
             stream.pipe(res);
         } else {
             res.status(200).set({
                 'Content-Length': fileSize,
                 'Content-Type': contentType,
-                'Accept-Ranges': 'bytes'
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=86400'
             });
             fs.createReadStream(filePath).pipe(res);
         }
@@ -394,14 +473,16 @@ app.get('/api/reserve-videos/stream/:id/:videoId', function(req, res) {
                 'Content-Range': 'bytes ' + start + '-' + end + '/' + fileSize,
                 'Accept-Ranges': 'bytes',
                 'Content-Length': chunkSize,
-                'Content-Type': contentType
+                'Content-Type': contentType,
+                'Cache-Control': 'public, max-age=86400'
             });
             stream.pipe(res);
         } else {
             res.status(200).set({
                 'Content-Length': fileSize,
                 'Content-Type': contentType,
-                'Accept-Ranges': 'bytes'
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=86400'
             });
             fs.createReadStream(filePath).pipe(res);
         }
@@ -540,11 +621,42 @@ app.delete('/api/announcements/:id', authMiddleware, adminMiddleware, function(r
 
 app.get('/api/announcements/:id/file', authMiddleware, function(req, res) {
     try {
-        var base64 = db.getAnnouncementFileBase64(parseInt(req.params.id, 10));
-        if (!base64) return res.json({ ok: false, error: '未找到文件' });
-        res.json({ ok: true, data: base64 });
+        var filePath = db.getAnnouncementFilePath(parseInt(req.params.id, 10));
+        if (!filePath || !fs.existsSync(filePath)) {
+            return res.status(404).json({ ok: false, error: '未找到文件' });
+        }
+        var stat = fs.statSync(filePath);
+        var fileSize = stat.size;
+        var range = req.headers.range;
+
+        if (range) {
+            var parts = range.replace(/bytes=/, '').split('-');
+            var start = parseInt(parts[0], 10);
+            var end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            if (start >= fileSize) {
+                res.status(416).set('Content-Range', 'bytes */' + fileSize);
+                return res.end();
+            }
+            var chunkSize = (end - start) + 1;
+            res.status(206)
+                .set('Content-Range', 'bytes ' + start + '-' + end + '/' + fileSize)
+                .set('Accept-Ranges', 'bytes')
+                .set('Content-Length', chunkSize)
+                .set('Content-Type', 'application/pdf')
+                .set('Cache-Control', 'public, max-age=3600');
+            fs.createReadStream(filePath, { start: start, end: end }).pipe(res);
+        } else {
+            res.status(200)
+                .set('Content-Length', fileSize)
+                .set('Content-Type', 'application/pdf')
+                .set('Accept-Ranges', 'bytes')
+                .set('Cache-Control', 'public, max-age=3600');
+            fs.createReadStream(filePath).pipe(res);
+        }
     } catch(err) {
-        res.json({ ok: false, error: err.message });
+        if (!res.headersSent) {
+            res.status(500).json({ ok: false, error: err.message });
+        }
     }
 });
 

@@ -112,7 +112,7 @@ function seedData() {
 // ===== Query helpers =====
 
 function getAllData() {
-  var artists = db.prepare("SELECT * FROM artists WHERE COALESCE(status,'') != '-1'").all();
+  var artists = db.prepare("SELECT id,name,avatar,status,business_level,store_name,positions,sign_status,daily_salary,linked_reserve_id,gender,id_card,age,phone FROM artists WHERE COALESCE(status,'') != '-1'").all();
   var contracts = db.prepare('SELECT * FROM contracts').all();
   var evaluations = db.prepare('SELECT * FROM evaluations ORDER BY evaluated_at DESC').all();
   var stores = db.prepare('SELECT * FROM stores').all();
@@ -130,6 +130,12 @@ function getAllData() {
     announcements: (announcements || []).map(mapAnnouncement),
     reserveArtists: (reserveArtists || []).map(mapReserveArtist)
   };
+}
+
+function getArtistMedia(artistId) {
+  var row = db.prepare('SELECT photos, videos FROM artists WHERE id = ?').get(artistId);
+  if (!row) return { photos: '[]', videos: '[]' };
+  return { photos: row.photos || '[]', videos: row.videos || '[]' };
 }
 
 function addArtist(data) {
@@ -279,11 +285,15 @@ function deleteAnnouncement(id) {
   return {};
 }
 
-function getAnnouncementFileBase64(id) {
+function getAnnouncementFilePath(id) {
   var row = db.prepare('SELECT file_path FROM announcements WHERE id = ?').get(id);
   if (!row || !row.file_path) return '';
-  var fullPath = path.join(__dirname, 'src', row.file_path);
-  if (!fs.existsSync(fullPath)) return '';
+  return path.join(__dirname, 'src', row.file_path);
+}
+
+function getAnnouncementFileBase64(id) {
+  var fullPath = getAnnouncementFilePath(id);
+  if (!fullPath || !fs.existsSync(fullPath)) return '';
   var buffer = fs.readFileSync(fullPath);
   return 'data:application/pdf;base64,' + buffer.toString('base64');
 }
@@ -405,8 +415,8 @@ function mapArtist(a) {
   return {
     id: a.id, name: a.name,
     avatar: a.avatar || 'https://picsum.photos/id/' + (a.id + 10) + '/40/40',
-    photos: a.photos || '[]',
-    videos: a.videos || '[]',
+    photos: '[]',
+    videos: '[]',
     status: a.status || '在岗', level: a.business_level || 'B级',
     store: a.store_name || '',
     position: a.positions ? JSON.parse(a.positions).join(', ') : '',
@@ -458,31 +468,52 @@ function mapSalary(s) {
 }
 
 function convertToH264(filePath) {
+  var ext = path.extname(filePath).toLowerCase();
+  // Only process video files
+  if (['.mp4','.mov','.avi','.mkv','.webm','.m4v','.3gp'].indexOf(ext) === -1) return filePath;
+
+  var codec = '';
   try {
-    var codec = execSync(
+    codec = execSync(
       'ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "' + filePath + '"',
       { encoding: 'utf8', timeout: 10000 }
     ).trim();
-    if (codec !== 'hevc' && codec !== 'hvc1' && codec !== 'hev1') return filePath;
-  } catch(e) {
-    // ffprobe not available — skip conversion
-    return filePath;
+  } catch(_) {
+    // ffprobe not available — try faststart remux anyway
   }
 
   var tmpPath = filePath.replace(/\.\w+$/, '_conv.mp4');
-  try {
-    execSync(
-      'ffmpeg -i "' + filePath + '" -c:v libx264 -c:a aac -movflags +faststart -y "' + tmpPath + '"',
-      { encoding: 'utf8', timeout: 300000, stdio: ['ignore', 'pipe', 'pipe'] }
-    );
-    fs.unlinkSync(filePath);
-    fs.renameSync(tmpPath, filePath);
-    return filePath;
-  } catch(e) {
-    // ffmpeg failed — keep original
-    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-    return filePath;
+
+  if (codec === 'hevc' || codec === 'hvc1' || codec === 'hev1') {
+    // HEVC/H.265: re-encode to H.264 + faststart
+    try {
+      execSync(
+        'ffmpeg -i "' + filePath + '" -c:v libx264 -c:a aac -movflags +faststart -y "' + tmpPath + '"',
+        { encoding: 'utf8', timeout: 300000, stdio: ['ignore', 'pipe', 'pipe'] }
+      );
+      fs.unlinkSync(filePath);
+      fs.renameSync(tmpPath, filePath);
+    } catch(_) {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    }
+  } else {
+    // All other formats: faststart remux only (no re-encode, ~1-2 seconds)
+    // This moves the moov atom to the front so playback can start immediately
+    try {
+      execSync(
+        'ffmpeg -i "' + filePath + '" -c copy -movflags +faststart -y "' + tmpPath + '"',
+        { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] }
+      );
+      // Only replace original if remux was successful and output is not empty
+      if (fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 0) {
+        fs.unlinkSync(filePath);
+        fs.renameSync(tmpPath, filePath);
+      }
+    } catch(_) {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    }
   }
+  return filePath;
 }
 
 function saveArtistVideo(artistId, dataUrl, fileName) {
@@ -680,12 +711,13 @@ function batchAddReserveArtists(list) {
 module.exports = {
   init,
   getAllData,
+  getArtistMedia,
   addArtist, updateArtist, deleteArtist,
   addContract, updateContract, getContractFileBase64,
   addSalaries, addEvaluations,
   saveArtistPhotos, saveAvatar,
   resetAllData,
-  addAnnouncement, deleteAnnouncement, getAnnouncementFileBase64,
+  addAnnouncement, deleteAnnouncement, getAnnouncementFileBase64, getAnnouncementFilePath,
   saveArtistVideo, saveArtistVideos, deleteArtistVideo, getVideoStreamInfo,
   getReserveVideoStreamInfo,
   saveReserveVideo, deleteReserveVideo,

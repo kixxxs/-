@@ -9,6 +9,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.DownloadListener;
+import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
 import android.webkit.WebView;
 import android.webkit.WebChromeClient;
@@ -21,6 +22,7 @@ public class MainActivity extends BridgeActivity {
     private View mCustomView;
     private WebChromeClient.CustomViewCallback mCustomViewCallback;
     private FrameLayout mFullscreenContainer;
+    private boolean mIsLandscapeVideo = true; // 默认横版，保持兼容
 
     @Override
     public void onStart() {
@@ -37,6 +39,14 @@ public class MainActivity extends BridgeActivity {
             mFullscreenContainer = new FrameLayout(this);
             mFullscreenContainer.setId(View.generateViewId());
             mFullscreenContainer.setBackgroundColor(0xFF000000);
+
+            // JS 接口：前端播放视频时告知横竖方向
+            webView.addJavascriptInterface(new Object() {
+                @JavascriptInterface
+                public void setVideoOrientation(boolean isLandscape) {
+                    mIsLandscapeVideo = isLandscape;
+                }
+            }, "NativeVideo");
 
             webView.setDownloadListener(new DownloadListener() {
                 @Override
@@ -63,41 +73,64 @@ public class MainActivity extends BridgeActivity {
             webView.setWebChromeClient(new WebChromeClient() {
                 @Override
                 public void onShowCustomView(View view, CustomViewCallback callback) {
-                    if (mCustomView != null) {
-                        callback.onCustomViewHidden();
+                    if (mFullscreenContainer == null) {
+                        if (callback != null) callback.onCustomViewHidden();
                         return;
+                    }
+                    // If already showing a fullscreen view, hide it first
+                    if (mCustomView != null) {
+                        onHideCustomView();
                     }
                     mCustomView = view;
                     mCustomViewCallback = callback;
 
-                    ((ViewGroup) getWindow().getDecorView()).addView(mFullscreenContainer,
-                        new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT));
-                    mFullscreenContainer.addView(view,
-                        new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT));
-                    mFullscreenContainer.setVisibility(View.VISIBLE);
+                    try {
+                        if (mFullscreenContainer.getParent() != null) {
+                            ((ViewGroup) mFullscreenContainer.getParent()).removeView(mFullscreenContainer);
+                        }
+                        if (view.getParent() != null) {
+                            ((ViewGroup) view.getParent()).removeView(view);
+                        }
 
-                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                        ((ViewGroup) getWindow().getDecorView()).addView(mFullscreenContainer,
+                            new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT));
+                        mFullscreenContainer.addView(view,
+                            new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT));
+                        mFullscreenContainer.setVisibility(View.VISIBLE);
+                        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                        if (mIsLandscapeVideo) {
+                            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                        }
+                    } catch (Exception e) {
+                        mCustomView = null;
+                        mCustomViewCallback = null;
+                        if (callback != null) callback.onCustomViewHidden();
+                    }
                 }
 
                 @Override
                 public void onHideCustomView() {
-                    if (mCustomView == null) return;
+                    if (mFullscreenContainer == null) return;
 
-                    mFullscreenContainer.removeAllViews();
-                    ((ViewGroup) mFullscreenContainer.getParent()).removeView(mFullscreenContainer);
-                    mFullscreenContainer.setVisibility(View.GONE);
-
-                    mCustomView = null;
-                    if (mCustomViewCallback != null) {
-                        mCustomViewCallback.onCustomViewHidden();
-                        mCustomViewCallback = null;
+                    try {
+                        mFullscreenContainer.removeAllViews();
+                        if (mFullscreenContainer.getParent() != null) {
+                            ((ViewGroup) mFullscreenContainer.getParent()).removeView(mFullscreenContainer);
+                        }
+                        mFullscreenContainer.setVisibility(View.GONE);
+                        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                    } catch (Exception e) {
+                        // Ignore - view hierarchy may already be cleaned up
                     }
 
-                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                    if (mCustomViewCallback != null) {
+                        mCustomViewCallback.onCustomViewHidden();
+                    }
+                    mCustomView = null;
+                    mCustomViewCallback = null;
                 }
             });
         } catch (Exception e) {

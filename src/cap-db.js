@@ -191,6 +191,30 @@ var CapDB = (function() {
     };
   }
 
+  // 轻量版：初始加载不含 photos/videos 大字段
+  function mapArtistLight(row) {
+    return {
+      id: row.id,
+      name: row.name,
+      avatar: row.avatar || '',
+      status: row.status || '在岗',
+      level: row.business_level || 'C级',
+      store: row.store_name || '',
+      position: (function() {
+        try { return JSON.parse(row.positions || '[]').join(', '); } catch(_) { return row.positions || ''; }
+      })(),
+      contractStatus: row.sign_status || '未签约',
+      dailySalary: row.daily_salary || 0,
+      linkedReserveId: row.linked_reserve_id || null,
+      gender: row.gender || '',
+      idNumber: row.id_card || '',
+      age: row.age || 0,
+      phone: row.phone || '',
+      photos: '[]',
+      videos: '[]'
+    };
+  }
+
   function mapContract(row) {
     return {
       id: row.id,
@@ -306,7 +330,8 @@ var CapDB = (function() {
   }
 
   function getAllData() {
-    var artists = execSelect("SELECT * FROM artists WHERE COALESCE(status,'') != '-1'").map(mapArtist);
+    // 初始加载不查 photos/videos 列（大文件），按需加载
+    var artists = execSelect("SELECT id,name,avatar,status,business_level,store_name,positions,sign_status,daily_salary,linked_reserve_id,gender,id_card,age,phone FROM artists WHERE COALESCE(status,'') != '-1'").map(mapArtistLight);
     var contracts = execSelect("SELECT * FROM contracts").map(mapContract);
     var evaluations = execSelect("SELECT * FROM evaluations ORDER BY evaluated_at DESC").map(mapEvaluation);
     var stores = execSelect("SELECT name FROM stores").map(function(r) { return r.name; });
@@ -314,6 +339,12 @@ var CapDB = (function() {
     var announcements = execSelect("SELECT * FROM announcements ORDER BY created_at DESC").map(mapAnnouncement);
     var reserveArtists = execSelect("SELECT * FROM reserve_artists WHERE COALESCE(status,'') != '-1'").map(mapReserveArtist);
     return { artists: artists, contracts: contracts, evaluations: evaluations, stores: stores, salaries: salaries, announcements: announcements, reserveArtists: reserveArtists };
+  }
+
+  function getArtistMedia(artistId) {
+    var row = execSelect("SELECT photos, videos FROM artists WHERE id = ?", [artistId]);
+    if (!row || row.length === 0) return { photos: '[]', videos: '[]' };
+    return { photos: row[0].photos || '[]', videos: row[0].videos || '[]' };
   }
 
   function addArtist(artistData) {
@@ -667,6 +698,7 @@ var CapDB = (function() {
     init: init,
     query: query,
     getAllData: getAllData,
+    getArtistMedia: getArtistMedia,
     addArtist: addArtist,
     updateArtist: updateArtist,
     deleteArtist: deleteArtist,

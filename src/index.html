@@ -115,6 +115,7 @@
             --mobile-nav-shadow: 0 -1px 16px rgba(0,0,0,0.06);
             --input-bg: #FAF8F5;
             --bg-secondary: #EDE8E0;
+            color-scheme: light;
             scrollbar-color: var(--border-color) var(--surface-bg);
         }
 
@@ -161,6 +162,7 @@
             --mobile-nav-shadow: 0 -1px 16px rgba(0,0,0,0.06);
             --input-bg: #FFFFFF;
             --bg-secondary: #FFF8F3;
+            color-scheme: light;
             scrollbar-color: var(--border-color) var(--surface-bg);
         }
 
@@ -1064,6 +1066,13 @@
     </style>
 </head>
 <body>
+    <!-- ===== 在线升级通知条 ===== -->
+    <div id="updateBar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:10000;background:linear-gradient(135deg,var(--primary-color,#D4A853),#B8965A);color:#121214;padding:10px 20px;align-items:center;justify-content:center;gap:10px;font-size:14px;font-weight:500;box-shadow:0 2px 12px rgba(0,0,0,0.3);">
+        <span id="updateBarText"></span>
+        <button id="updateBarBtn" style="background:#121214;color:var(--primary-color,#D4A853);border:none;padding:5px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;"></button>
+        <button id="updateBarClose" style="background:transparent;border:none;color:#121214;opacity:0.6;cursor:pointer;font-size:18px;padding:0 4px;" onclick="document.getElementById('updateBar').style.display='none'">&times;</button>
+    </div>
+
     <!-- ===== V2 登录页面 ===== -->
     <div id="loginOverlay" style="display:flex; position:fixed; top:0; left:0; width:100%; height:100%;
         background:#121214;
@@ -2241,7 +2250,7 @@
     <!-- 视频播放器 -->
     <div id="videoPlayerModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;align-items:center;justify-content:center;flex-direction:column;" onclick="closeVideoPlayer()">
         <span style="position:absolute;top:20px;right:30px;color:#fff;font-size:40px;cursor:pointer;z-index:10;">&times;</span>
-        <video id="videoPlayer" controls playsinline style="max-width:95%;max-height:80%;" onclick="event.stopPropagation();">
+        <video id="videoPlayer" controls playsinline preload="auto" style="max-width:95%;max-height:80%;" onclick="event.stopPropagation();">
             您的浏览器不支持视频播放
         </video>
         
@@ -2490,7 +2499,7 @@
 
     <script>
         // ===== 云端同步配置 =====
-        var CLOUD_SERVER_URL = 'http://42.194.230.53:8080';
+        var CLOUD_SERVER_URL = 'http://106.53.6.92:8080';
 
         // ===== V2 登录系统 =====
         var LOGIN_ACCOUNTS = [
@@ -3968,6 +3977,9 @@
                 serverUrlInput.value = localStorage.getItem('v2_server_url') || '';
             }
 
+            // 启动在线升级检查（延迟3秒，无论是否登录都检查）
+            setTimeout(function() { checkForUpdates(); }, 3000);
+
             // V2: 检查登录状态
             if (!(await checkLoginState())) {
                 // 未登录，仅显示登录页
@@ -4037,35 +4049,41 @@
             return activePane ? '#' + activePane.id : '#dashboard';
         }
 
-        // 仅渲染当前活跃 tab 对应的视图（性能优化：避免一次渲染13个视图）
+        // 仅渲染当前活跃 tab 对应的视图（首次访问懒渲染，后续实时更新）
         function renderCurrentView() {
             var tab = getActiveTabId();
             switch (tab) {
                 case '#dashboard':
                     updateDashboard();
+                    _tabRendered['#dashboard'] = true;
                     break;
                 case '#artists':
                     updateArtistsList();
                     updateArtistsStats();
+                    _tabRendered['#artists'] = true;
                     break;
                 case '#contracts':
                     updateContractsList();
                     updateContractsStats();
+                    _tabRendered['#contracts'] = true;
                     break;
                 case '#salary':
-                    updateSalaryStats();
-                    updateSalaryList();
+                    if (!_tabRendered['#salary']) { updateSalaryStats(); updateSalaryList(); updateSalaryComparisonChart(); _tabRendered['#salary'] = true; }
+                    else { updateSalaryStats(); }
                     break;
                 case '#evaluation':
                     updateEvaluationList();
                     updateEvaluationStats();
+                    _tabRendered['#evaluation'] = true;
                     break;
                 case '#reserve':
                     renderReserveArtistsList();
                     renderReserveStats();
+                    _tabRendered['#reserve'] = true;
                     break;
                 case '#profile':
                     updateAnnouncementsList();
+                    _tabRendered['#profile'] = true;
                     break;
                 default:
                     updateDashboard();
@@ -4091,23 +4109,56 @@
         }
 
         // 全量加载数据并渲染所有视图（仅用于初始化和数据重置）
+        // 懒渲染标记：各 tab 是否已渲染过
+        var _tabRendered = {};
+
         async function loadData() {
             await refreshData();
             populateStoreDropdowns();
             populateSalaryMonthDropdowns();
+            // 仅渲染首页可见内容（仪表盘 + 公告栏），其他 tab 按需懒渲染
             updateDashboard();
             updateAnnouncementsList();
-            updateArtistsList();
-            updateArtistsStats();
-            updateContractsList();
-            updateContractsStats();
-            updateSalaryStats();
-            updateSalaryList();
-            updateEvaluationList();
-            updateEvaluationStats();
-            renderReserveArtistsList();
-            renderReserveStats();
+            _tabRendered['#dashboard'] = true;
+            _tabRendered['#profile'] = true;
             applyRoleBasedUI();
+        }
+
+        // 按需加载艺人媒体（照片+视频），避免初始数据包过大
+        async function loadArtistMedia(artistId) {
+            if (!artistId) return;
+            // Find the artist and check if media is already loaded
+            var artist = null;
+            for (var i = 0; i < (appData.artists || []).length; i++) {
+                if (appData.artists[i].id === artistId) { artist = appData.artists[i]; break; }
+            }
+            if (!artist) return;
+            // If photos/videos already populated (not empty placeholder), skip
+            if (artist.photos !== '[]' || artist.videos !== '[]') return;
+            try {
+                if (DBStorage._serverMode) {
+                    var resp = await fetch(ServerStorage._base + '/api/artists/' + artistId + '/media', {
+                        headers: { 'Authorization': 'Bearer ' + ServerStorage._token }
+                    });
+                    var body = await resp.json();
+                    if (body.ok) {
+                        artist.photos = body.data.photos || '[]';
+                        artist.videos = body.data.videos || '[]';
+                    }
+                } else if (_useCapacitorStore && CapDB.getArtistMedia) {
+                    var media = CapDB.getArtistMedia(artistId);
+                    artist.photos = media.photos || '[]';
+                    artist.videos = media.videos || '[]';
+                } else if (window.electronAPI && window.electronAPI.getArtistMedia) {
+                    var result = await window.electronAPI.getArtistMedia(artistId);
+                    if (result.ok) {
+                        artist.photos = result.data.photos || '[]';
+                        artist.videos = result.data.videos || '[]';
+                    }
+                }
+            } catch(e) {
+                console.error('[Media] 加载失败:', e.message);
+            }
         }
 
         // 动态填充门店下拉菜单
@@ -4840,7 +4891,9 @@
 
         // 初始化图表（loadData已更新大部分图表，此处仅处理未覆盖的）
         function initializeCharts() {
-            updateSalaryComparisonChart();
+            // Charts are now created lazily when their tab is first accessed.
+            // Dashboard charts: updateDashboard() → updateLevelDistributionChart() / updateSalaryTrendChart()
+            // Salary comparison chart: rendered on first #salary tab switch via renderCurrentView()
         }
 
         // 艺人等级分布柱状图
@@ -5816,7 +5869,7 @@
                     return;
                 }
 
-                await showPdfPreview(base64Data, '合约PDF预览', contract.artistName || '未知');
+                await showPdfPreview(base64Data, null, null, '合约PDF预览', contract.artistName || '未知');
             } catch(e) {
                 showToast('加载PDF失败：' + e.message, 'error');
                 closeModal('pdfPreviewModal');
@@ -5886,34 +5939,64 @@
                 return;
             }
 
+            // 立即显示预览弹窗（带 loading）
+            showPdfLoadingModal(ann.title || '文件预览');
+
             try {
                 var base64Data = '';
+
                 if (ann.filePath && ann.filePath.startsWith('data:application/pdf;base64,')) {
+                    // 内存模式：已有 base64 数据
                     base64Data = ann.filePath;
                 } else if (DBStorage._serverMode) {
-                    // 服务器模式优先：通过 API 读取文件
+                    // 服务器模式：fetch PDF 二进制 → 转 base64 → 统一走 renderPdfToCanvas
                     var resp = await fetch(ServerStorage._base + '/api/announcements/' + id + '/file', {
                         headers: { 'Authorization': 'Bearer ' + ServerStorage._token }
                     });
-                    var body = await resp.json().catch(function() { return {}; });
-                    if (body.ok && body.data) { base64Data = body.data; }
-                    else { showToast('读取文件失败', 'error'); closeModal('pdfPreviewModal'); return; }
+                    if (!resp.ok) { showToast('读取文件失败', 'error'); closeModal('pdfPreviewModal'); _pdfPreviewLock = false; return; }
+                    var blob = await resp.blob();
+                    base64Data = await new Promise(function(resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function() { resolve(reader.result); };
+                        reader.onerror = function() { reject(new Error('文件读取失败')); };
+                        reader.readAsDataURL(blob);
+                    });
                 } else if (window.electronAPI && window.electronAPI.readAnnouncementFile) {
-                    // Electron 本地模式：通过 IPC 读取本地文件
                     var result = await window.electronAPI.readAnnouncementFile(ann.filePath);
-                    if (result.ok) { base64Data = result.data; }
-                    else { showToast('读取文件失败：' + result.error, 'error'); closeModal('pdfPreviewModal'); return; }
+                    if (!result.ok) { showToast('读取文件失败：' + result.error, 'error'); closeModal('pdfPreviewModal'); _pdfPreviewLock = false; return; }
+                    base64Data = result.data;
                 } else {
-                    showToast('当前环境不支持PDF预览', 'error'); closeModal('pdfPreviewModal'); return;
+                    showToast('当前环境不支持PDF预览', 'error'); closeModal('pdfPreviewModal'); _pdfPreviewLock = false; return;
                 }
 
-                await showPdfPreview(base64Data, '文件预览', '');
+                await showPdfPreview(base64Data, null, null, ann.title || '文件预览', '');
             } catch(e) {
                 showToast('加载PDF失败：' + e.message, 'error');
                 closeModal('pdfPreviewModal');
             } finally {
                 _pdfPreviewLock = false;
             }
+        }
+
+        // 立即显示 PDF 弹窗 + loading 状态
+        function showPdfLoadingModal(title) {
+            var modal = document.getElementById('pdfPreviewModal');
+            var iframe = document.getElementById('pdfPreviewIframe');
+            var viewer = document.getElementById('pdfCanvasViewer');
+            document.getElementById('pdfPreviewTitle').textContent = title || 'PDF预览';
+            document.getElementById('pdfPreviewSubtitle').textContent = '';
+            _pdfCurrentBase64 = '';
+            if (_pdfDoc && _pdfDoc.cleanup) _pdfDoc.cleanup();
+            _pdfDoc = null;
+            resetPdfZoom();
+            _pdfCurrentBase64 = '';
+            _pdfRenderToken++;
+            if (iframe) { iframe.src = ''; iframe.style.display = 'none'; }
+            if (viewer) {
+                viewer.innerHTML = '<div style="padding:32px;color:var(--text-muted);text-align:center"><div class="spinner-border" style="width:32px;height:32px;margin-bottom:12px;"></div><div>正在加载PDF文件...</div></div>';
+                viewer.style.display = 'block';
+            }
+            if (modal) modal.style.display = 'block';
         }
 
         // ===== PDF.js 本地渲染（用于 Capacitor/移动端，不依赖 WebView 原生 PDF 能力）=====
@@ -5975,11 +6058,7 @@
             return _pdfJsModulePromise;
         }
 
-        async function showPdfPreview(base64Data, title, subtitle) {
-            if (!base64Data || !base64Data.startsWith('data:application/pdf;base64,')) {
-                throw new Error('PDF数据格式无效');
-            }
-
+        async function showPdfPreview(base64Data, blobUrl, pdfUrl, title, subtitle) {
             var modal = document.getElementById('pdfPreviewModal');
             var iframe = document.getElementById('pdfPreviewIframe');
             var viewer = document.getElementById('pdfCanvasViewer');
@@ -5990,18 +6069,11 @@
             if (_pdfDoc && _pdfDoc.cleanup) _pdfDoc.cleanup();
             _pdfDoc = null;
             resetPdfZoom();
-            _pdfCurrentBase64 = base64Data;
+            _pdfCurrentBase64 = base64Data || '';
             _pdfRenderToken++;
 
-            if (iframe) {
-                iframe.src = '';
-                iframe.style.display = '';
-                iframe.style.transform = '';
-            }
-            if (viewer) {
-                viewer.innerHTML = '';
-                viewer.style.display = 'none';
-            }
+            if (iframe) { iframe.src = ''; iframe.style.display = ''; }
+            if (viewer) { viewer.innerHTML = ''; viewer.style.display = 'none'; }
             if (modal) modal.style.display = 'block';
 
             if (isNativePdfPreview()) {
@@ -6012,8 +6084,44 @@
                 }
                 await renderPdfToCanvas(base64Data);
             } else if (iframe) {
-                iframe.src = base64Data;
+                iframe.src = base64Data || '';
             }
+        }
+
+        async function renderPdfFromUrl(url) {
+            if (!url) return;
+            var renderToken = _pdfRenderToken;       // Bug 3: render token 守卫
+            var pdfjsLib = await loadPdfJs();
+            if (renderToken !== _pdfRenderToken) return;  // 已被更新的请求取消
+            // 从 URL 加载 PDF，PDF.js 会自动发 Range 请求实现渐进式加载
+            var loadingTask = pdfjsLib.getDocument({ url: url, withCredentials: false });
+            _pdfDoc = await loadingTask.promise;
+            if (renderToken !== _pdfRenderToken) { _pdfDoc = null; return; }
+            // Bug 2: 设 sentinel 值，使缩放/重渲染功能正常工作
+            _pdfCurrentBase64 = '__BLOB__';
+            var viewer = document.getElementById('pdfCanvasViewer');
+            if (!viewer) return;
+            viewer.innerHTML = '';
+            var totalPages = _pdfDoc.numPages || 0;
+            for (var p = 1; p <= totalPages; p++) {
+                var pageDiv = document.createElement('div');
+                pageDiv.className = 'pdf-page-container';
+                pageDiv.style.cssText = 'margin-bottom:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.15);';
+                pageDiv.id = 'pdfPage_' + _pdfRenderToken + '_' + p;
+                var label = document.createElement('div');
+                label.style.cssText = 'font-size:12px;color:var(--text-secondary);padding:6px 0;';
+                label.textContent = '第 ' + p + ' / ' + totalPages + ' 页';
+                pageDiv.appendChild(label);
+                var canvasWrap = document.createElement('div');
+                canvasWrap.style.cssText = 'overflow-x:auto;-webkit-overflow-scrolling:touch;';
+                var canvas = document.createElement('canvas');
+                canvas.style.cssText = 'max-width:100%;min-width:600px;';
+                canvas.id = 'pdfCanvas_' + _pdfRenderToken + '_' + p;
+                canvasWrap.appendChild(canvas);
+                pageDiv.appendChild(canvasWrap);
+                viewer.appendChild(pageDiv);
+            }
+            _renderVisiblePages();     // Bug 1: 修正函数名
         }
 
         async function _getPdfDoc(base64Data) {
@@ -6030,10 +6138,10 @@
             _pdfReRenderPending = true;
             requestAnimationFrame(function() {
                 _pdfReRenderPending = false;
-                if (!_pdfCurrentBase64) return;
+                if (!_pdfCurrentBase64 && !_pdfDoc) return;
                 if (_pdfPageMetas.length) {
                     reRenderPages();
-                } else {
+                } else if (_pdfCurrentBase64 && _pdfCurrentBase64 !== '__BLOB__') {
                     renderPdfToCanvas(_pdfCurrentBase64).catch(function(e) {
                         console.warn('PDF re-render failed:', e.message);
                     });
@@ -6279,7 +6387,7 @@
                 _pdfZoomTranslateX = 0;
                 _pdfZoomTranslateY = 0;
             }
-            if (_pdfCurrentBase64 && isNativePdfPreview()) {
+            if ((_pdfCurrentBase64 || _pdfDoc) && isNativePdfPreview()) {
                 applyPdfZoom();
                 if (_pdfPageMetas.length) {
                     reRenderPages();
@@ -6380,7 +6488,7 @@
 
             container.addEventListener('touchend', function(e) {
                 if (e.touches.length === 0) {
-                    if (pinching && isNativePdfPreview() && _pdfCurrentBase64) {
+                    if (pinching && isNativePdfPreview() && (_pdfCurrentBase64 || _pdfDoc)) {
                         schedulePdfReRender();
                     }
                     dragging = false;
@@ -7393,13 +7501,16 @@
         var _currentVideos = [];
         var _currentVideoIndex = 0;
 
-        function openArtistDetail(id) {
+        async function openArtistDetail(id) {
             var artist = null;
             for (var i = 0; i < appData.artists.length; i++) {
                 if (appData.artists[i].id === id) { artist = appData.artists[i]; break; }
             }
             if (!artist) { showToast('未找到该艺人', 'error'); return; }
             _currentDetailArtist = artist;
+
+            // 按需加载照片/视频（初始数据不含大文件）
+            await loadArtistMedia(artist.id);
 
             // Basic info
             document.getElementById('artistDetailTitle').textContent = artist.name + ' - 详情';
@@ -7615,18 +7726,19 @@
         }
 
         function getVideoStreamUrl(video) {
-            if (!video || !video.serverPath) return '';
-            // Server mode (including Electron connected to server): streaming URL from cloud
+            if (!video || !video.id) return '';
+            // 服务器流式播放：仅使用明确存储的 v2_server_url
             var srvUrl = localStorage.getItem('v2_server_url') || '';
-            if (!srvUrl && window.location.protocol.startsWith('http')) srvUrl = window.location.origin;
+            // Capacitor 的 http://localhost 不算服务器
+            if (srvUrl && srvUrl.indexOf('localhost') !== -1) srvUrl = '';
             if (srvUrl) {
                 return srvUrl.replace(/\/+$/, '') + '/api/videos/stream/' + (_currentDetailArtist ? _currentDetailArtist.id : 0) + '/' + encodeURIComponent(video.id);
             }
-            // Electron local mode: use app-file:// custom protocol
-            if (window.electronAPI && window.electronAPI.isDesktop) {
+            // Electron 本地模式：app-file:// 协议（支持 Range 请求）
+            if (window.electronAPI && window.electronAPI.isDesktop && video.serverPath) {
                 return 'app-file://' + video.serverPath;
             }
-            // Capacitor local file
+            // Capacitor 离线降级：本地 base64 数据（不支持流式，仅兜底）
             if (_useCapacitorStore && video.localPath) return video.localPath;
             return '';
         }
@@ -7688,6 +7800,10 @@
             playerEl.onclick = function(e) { e.stopPropagation(); };
 
             playerEl.addEventListener('canplay', function() {
+                // 告知 Android 原生层视频横竖方向
+                if (typeof NativeVideo !== 'undefined' && NativeVideo.setVideoOrientation) {
+                    try { NativeVideo.setVideoOrientation(playerEl.videoWidth > playerEl.videoHeight); } catch(_) {}
+                }
                 playerEl.play().then(function() {
                     if (playerEl.videoWidth === 0 && playerEl.videoHeight === 0) {
                         playerEl.pause();
@@ -8400,14 +8516,13 @@
         }
 
         function getReserveVideoStreamUrl(video) {
-            if (!video) return '#';
+            if (!video || !video.id) return '#';
+            // 服务器流式播放：仅使用明确存储的 v2_server_url
+            var base = localStorage.getItem('v2_server_url') || '';
+            if (base && base.indexOf('localhost') !== -1) base = '';
+            if (base) return base.replace(/\/+$/, '') + '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + encodeURIComponent(video.id);
+            // 离线降级：本地 base64
             if (video.localPath && video.localPath.startsWith('data:video/')) return video.localPath;
-            if (video.serverPath) {
-                var base = localStorage.getItem('v2_server_url') || '';
-                if (!base && window.location.protocol.startsWith('http')) base = window.location.origin;
-                if (base) return base.replace(/\/+$/, '') + '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + (video.id || '');
-                return '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + (video.id || '');
-            }
             return '#';
         }
 
@@ -8436,6 +8551,10 @@
             playerEl.onclick = function(e) { e.stopPropagation(); };
 
             playerEl.addEventListener('canplay', function() {
+                // 告知 Android 原生层视频横竖方向
+                if (typeof NativeVideo !== 'undefined' && NativeVideo.setVideoOrientation) {
+                    try { NativeVideo.setVideoOrientation(playerEl.videoWidth > playerEl.videoHeight); } catch(_) {}
+                }
                 playerEl.play().then(function() {
                     if (playerEl.videoWidth === 0 && playerEl.videoHeight === 0) {
                         playerEl.pause();
@@ -8654,6 +8773,103 @@
             } else {
                 showToast('批量导入失败：' + (result.error || '未知错误'), 'error');
             }
+        }
+
+        // ===== 在线升级检查 =====
+
+        var ANDROID_VERSION_CODE = 2;
+        var IOS_VERSION = '1.0.1';
+
+        function checkForUpdates() {
+            var isElectron = window.electronAPI && window.electronAPI.isDesktop;
+            var isCapacitor = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform && Capacitor.isNativePlatform();
+
+            if (isElectron) {
+                window.electronAPI.onUpdateStatus(handleUpdateStatus);
+            } else if (isCapacitor) {
+                checkServerVersion();
+            }
+        }
+
+        async function checkServerVersion() {
+            try {
+                var srvUrl = (localStorage.getItem('v2_server_url') || 'http://106.53.6.92:8080').replace(/\/+$/, '');
+                var resp = await fetch(srvUrl + '/api/version');
+                var result = await resp.json();
+                if (!result.ok || !result.data) return;
+
+                var info = result.data;
+                var isIOS = /iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+
+                if (isIOS && info.ios && info.ios.version) {
+                    if (info.ios.version !== IOS_VERSION) {
+                        showUpdateBar('发现新版本 ' + info.ios.version, function() {
+                            window.location.href = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(srvUrl + '/updates/manifest.plist');
+                        });
+                    }
+                } else if (!isIOS && info.android && info.android.versionCode) {
+                    if (info.android.versionCode > ANDROID_VERSION_CODE) {
+                        showUpdateBar('发现新版本，请下载更新', function() {
+                            document.getElementById('updateBarText').textContent = '下载已开始，请查看通知栏';
+                            document.getElementById('updateBarBtn').style.display = 'none';
+                            window.location.href = srvUrl + (info.android.apkUrl || '/updates/artist-manager.apk');
+                        });
+                    }
+                }
+            } catch(e) {
+                console.log('[Update] 检查失败:', e.message);
+            }
+        }
+
+        function handleUpdateStatus(data) {
+            var bar = document.getElementById('updateBar');
+            var text = document.getElementById('updateBarText');
+            var btn = document.getElementById('updateBarBtn');
+
+            switch(data.status) {
+                case 'checking':
+                    break;
+                case 'available':
+                    bar.style.display = 'flex';
+                    text.textContent = '发现新版本 ' + (data.info.version || '');
+                    btn.textContent = '立即更新';
+                    btn.style.display = '';
+                    btn.onclick = function() {
+                        text.textContent = '正在下载更新...';
+                        btn.style.display = 'none';
+                        window.electronAPI.downloadUpdate();
+                    };
+                    break;
+                case 'progress':
+                    bar.style.display = 'flex';
+                    text.textContent = '正在下载 ' + Math.round(data.info.percent || 0) + '%';
+                    btn.style.display = 'none';
+                    break;
+                case 'downloaded':
+                    bar.style.display = 'flex';
+                    text.textContent = '更新已下载，请重启应用';
+                    btn.textContent = '立即重启';
+                    btn.style.display = '';
+                    btn.onclick = function() {
+                        window.electronAPI.quitAndInstall();
+                    };
+                    break;
+                case 'not-available':
+                case 'error':
+                    break;
+            }
+        }
+
+        function showUpdateBar(msg, onclick) {
+            var bar = document.getElementById('updateBar');
+            var text = document.getElementById('updateBarText');
+            var btn = document.getElementById('updateBarBtn');
+            if (!bar || !text || !btn) return;
+            bar.style.display = 'flex';
+            text.textContent = msg;
+            btn.textContent = '下载更新';
+            btn.style.display = '';
+            btn.onclick = onclick;
         }
     </script>
 </body>
