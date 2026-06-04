@@ -19,12 +19,7 @@ class _GeneratePageState extends State<GeneratePage> {
   @override
   void initState() {
     super.initState();
-    // 默认文件名：日期时间
-    final now = DateTime.now();
-    final defaultName =
-        '${now.year}-${_pad(now.month)}-${_pad(now.day)}_'
-        '${_pad(now.hour)}-${_pad(now.minute)}-${_pad(now.second)}';
-    _nameController = TextEditingController(text: defaultName);
+    _nameController = TextEditingController(text: '');
   }
 
   @override
@@ -32,8 +27,6 @@ class _GeneratePageState extends State<GeneratePage> {
     _nameController.dispose();
     super.dispose();
   }
-
-  String _pad(int n) => n.toString().padLeft(2, '0');
 
   Future<void> _generateAndSave() async {
     final fileName = _nameController.text.trim();

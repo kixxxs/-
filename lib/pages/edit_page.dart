@@ -103,20 +103,6 @@ class EditPage extends StatelessWidget {
                   child: Stack(
                     children: [
                       Image.file(file, width: 72, height: 72, fit: BoxFit.cover),
-                      if (photo.isEnhanced)
-                        Positioned(
-                          left: 0, right: 0, bottom: 0,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                            color: Colors.black54,
-                            child: const Text(
-                              '增强',
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              style: TextStyle(color: Colors.white, fontSize: 8),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -143,10 +129,6 @@ class EditPage extends StatelessWidget {
                             builder: (_) => CropPage(photoIndex: index),
                           ));
                         }),
-                        if (!photo.isEnhanced)
-                          _buildActionChip(context, Icons.auto_fix_high, '增强', () async {
-                            await provider.enhancePhoto(index);
-                          }),
                       ],
                     ),
                     if (annotationCount > 0) ...[

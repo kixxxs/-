@@ -46,11 +46,9 @@ class PdfService {
     return pw.Page(
       pageFormat: PdfPageFormat.a4,
       build: (pw.Context context) {
-        return pw.Center(
-          child: pw.Image(
-            pw.MemoryImage(finalBytes),
-            fit: pw.BoxFit.contain,
-          ),
+        return pw.Image(
+          pw.MemoryImage(finalBytes),
+          fit: pw.BoxFit.contain,
         );
       },
     );
