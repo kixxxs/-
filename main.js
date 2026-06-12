@@ -765,27 +765,27 @@ ipcMain.handle('download-update', function() {
 
 ipcMain.handle('quit-and-install', function() {
   try {
-    // 1. 移除所有窗口关闭监听器，防止拦截退出
+    // 1. 清掉所有可能阻止退出的监听器
     app.removeAllListeners('window-all-closed');
     app.removeAllListeners('before-quit');
     app.removeAllListeners('will-quit');
 
-    // 2. 销毁窗口（destroy 是同步的，不等待 close 事件）
+    // 2. 强制销毁窗口
     if (mainWindow) {
       mainWindow.removeAllListeners('close');
       mainWindow.destroy();
       mainWindow = null;
     }
 
-    // 3. 延迟一帧确保窗口销毁完成，然后启动安装
-    setImmediate(function() {
-      try {
-        const { autoUpdater } = require('electron-updater');
-        autoUpdater.quitAndInstall();
-      } catch(e) {
-        app.exit(0);
-      }
-    });
+    // 3. 调用 quitAndInstall 让它注册安装器启动任务
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.quitAndInstall(true, true);
+
+    // 4. 延迟 500ms 后如果还没退出，强制杀进程
+    // quitAndInstall 内部调用 app.quit() 是异步的，这个兜底确保进程一定死
+    setTimeout(function() {
+      app.exit(0);
+    }, 500);
   } catch(err) {
     app.exit(0);
   }
