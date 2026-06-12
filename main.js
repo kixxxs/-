@@ -765,9 +765,19 @@ ipcMain.handle('download-update', function() {
 
 ipcMain.handle('quit-and-install', function() {
   try {
+    // 强制关闭窗口，清理资源，避免安装器检测到进程残留
+    if (mainWindow) {
+      mainWindow.removeAllListeners('close');
+      mainWindow.close();
+      mainWindow = null;
+    }
+    app.removeAllListeners('window-all-closed');
     const { autoUpdater } = require('electron-updater');
     autoUpdater.quitAndInstall();
-  } catch(err) {}
+  } catch(err) {
+    // 如果上述清理失败，强制退出
+    app.exit(0);
+  }
 });
 
 // ===== Artist media lazy-load =====

@@ -1075,7 +1075,7 @@
     <div id="updateBar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:10000;background:linear-gradient(135deg,var(--primary-color,#D4A853),#B8965A);color:#121214;padding:10px 20px;align-items:center;justify-content:center;gap:10px;font-size:14px;font-weight:500;box-shadow:0 2px 12px rgba(0,0,0,0.3);">
         <span id="updateBarText"></span>
         <button id="updateBarBtn" style="background:#121214;color:var(--primary-color,#D4A853);border:none;padding:5px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;"></button>
-        <button id="updateBarClose" style="background:transparent;border:none;color:#121214;opacity:0.6;cursor:pointer;font-size:18px;padding:0 4px;" onclick="document.getElementById('updateBar').style.display='none'">&times;</button>
+        <button id="updateBarClose" style="background:transparent;border:none;color:#121214;opacity:0.6;cursor:pointer;font-size:18px;padding:0 4px;" onclick="dismissUpdateBar()">&times;</button>
     </div>
 
     <!-- ===== V2 登录页面 ===== -->
@@ -9123,14 +9123,18 @@
                 var isIOS = /iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
 
                 if (isIOS && info.ios && info.ios.version) {
-                    if (info.ios.version !== IOS_VERSION) {
+                    var skippedIOS = localStorage.getItem('update_skipped_ios') || '';
+                    if (info.ios.version !== IOS_VERSION && info.ios.version !== skippedIOS) {
                         showUpdateBar('发现新版本 ' + info.ios.version, function() {
+                            localStorage.setItem('update_skipped_ios', info.ios.version);
                             window.location.href = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(srvUrl + '/updates/manifest.plist');
                         });
                     }
                 } else if (!isIOS && info.android && info.android.versionCode) {
-                    if (info.android.versionCode > ANDROID_VERSION_CODE) {
+                    var skippedAndroid = parseInt(localStorage.getItem('update_skipped_android')) || 0;
+                    if (info.android.versionCode > ANDROID_VERSION_CODE && info.android.versionCode > skippedAndroid) {
                         showUpdateBar('发现新版本，请下载更新', function() {
+                            localStorage.setItem('update_skipped_android', String(info.android.versionCode));
                             document.getElementById('updateBarText').textContent = '下载已开始，请查看通知栏';
                             document.getElementById('updateBarBtn').style.display = 'none';
                             window.location.href = srvUrl + (info.android.apkUrl || '/updates/artist-manager.apk');
@@ -9178,6 +9182,17 @@
                 case 'not-available':
                 case 'error':
                     break;
+            }
+        }
+
+        function dismissUpdateBar() {
+            document.getElementById('updateBar').style.display = 'none';
+            // 记录跳过的版本，防止再次弹出
+            var isIOS = /iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+            if (isIOS) {
+                localStorage.setItem('update_skipped_ios', IOS_VERSION);
+            } else {
+                localStorage.setItem('update_skipped_android', String(ANDROID_VERSION_CODE));
             }
         }
 
