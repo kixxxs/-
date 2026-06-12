@@ -4198,61 +4198,55 @@
         var _tabRendered = {};
 
         async function loadData() {
-            // 初始化 IndexedDB 缓存
-            await CacheStore.init();
+            try {
+                await CacheStore.init();
+                var cached = await CacheStore.get('data_all');
 
-            // 第一步：尝试从本地缓存加载（瞬间显示）
-            var cached = await CacheStore.get('data_all');
-            if (cached && cached.data) {
-                console.log('[Cache] 命中缓存，即时渲染 (缓存时间: ' + new Date(cached.time).toLocaleTimeString() + ')');
-                applyCachedData(cached.data);
-                populateStoreDropdowns();
-                populateSalaryMonthDropdowns();
-                updateDashboard();
-                updateAnnouncementsList();
-                _tabRendered['#dashboard'] = true;
-                _tabRendered['#profile'] = true;
-                applyRoleBasedUI();
-            }
-
-            // 第二步：从服务器拉取最新数据
-            var serverResult = null;
-            if (DBStorage._serverMode) {
-                var etag = cached ? cached.etag : null;
-                serverResult = await ServerStorage.loadAllWithETag(etag);
-            }
-
-            if (serverResult && serverResult.data) {
-                // 服务器有新数据
-                refreshDataFromObject(serverResult.data);
-                CacheStore.set('data_all', { data: serverResult.data, etag: serverResult.etag || '', time: Date.now() });
-                if (!cached) {
-                    // 首次加载，渲染
-                    populateStoreDropdowns();
-                    populateSalaryMonthDropdowns();
-                    updateDashboard();
-                    updateAnnouncementsList();
-                    _tabRendered['#dashboard'] = true;
-                    _tabRendered['#profile'] = true;
-                    applyRoleBasedUI();
+                // 第一步：缓存命中 → 即时渲染
+                if (cached && cached.data) {
+                    console.log('[Cache] 命中缓存，即时渲染');
+                    applyCachedData(cached.data);
+                    renderAfterLoad();
                 }
-            } else if (serverResult && serverResult.unchanged) {
-                console.log('[Cache] 服务器确认数据未变化 (304)');
-            } else if (!cached) {
-                // 没缓存也没服务器 → 走原来的 refreshData
+
+                // 第二步：从服务器拉最新数据
+                var serverResult = null;
+                if (DBStorage._serverMode) {
+                    serverResult = await ServerStorage.loadAllWithETag(cached ? cached.etag : null);
+                }
+
+                if (serverResult && serverResult.data) {
+                    // 服务器有新数据 → 更新
+                    refreshDataFromObject(serverResult.data);
+                    CacheStore.set('data_all', { data: serverResult.data, etag: serverResult.etag || '', time: Date.now() });
+                    if (!cached) renderAfterLoad();
+                } else if (serverResult && serverResult.unchanged) {
+                    console.log('[Cache] 数据未变化 (304)');
+                    if (!cached) { await refreshData(); renderAfterLoad(); }
+                } else if (!cached) {
+                    // 没缓存 → 走原始刷新逻辑
+                    await refreshData();
+                    renderAfterLoad();
+                    if (appData.artists.length > 0) {
+                        CacheStore.set('data_all', { data: JSON.parse(JSON.stringify(appData)), etag: '', time: Date.now() });
+                    }
+                }
+            } catch(e) {
+                console.error('[Cache] 缓存逻辑异常，降级为普通加载:', e.message);
                 await refreshData();
-                populateStoreDropdowns();
-                populateSalaryMonthDropdowns();
-                updateDashboard();
-                updateAnnouncementsList();
-                _tabRendered['#dashboard'] = true;
-                _tabRendered['#profile'] = true;
-                applyRoleBasedUI();
-                // 首次成功加载后缓存
-                if (appData.artists.length > 0) {
-                    CacheStore.set('data_all', { data: JSON.parse(JSON.stringify(appData)), etag: '', time: Date.now() });
-                }
+                renderAfterLoad();
             }
+        }
+
+        // 首次渲染：dropdowns + dashboard + 角色UI
+        function renderAfterLoad() {
+            populateStoreDropdowns();
+            populateSalaryMonthDropdowns();
+            updateDashboard();
+            updateAnnouncementsList();
+            _tabRendered['#dashboard'] = true;
+            _tabRendered['#profile'] = true;
+            applyRoleBasedUI();
         }
 
         // 将缓存数据注入 appData（不覆盖已有更好的数据）
