@@ -353,6 +353,16 @@ app.get('/api/contracts/:id/file', authMiddleware, function(req, res) {
     }
 });
 
+app.delete('/api/contracts/:id', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.deleteContract(parseInt(req.params.id, 10));
+        broadcast('contract-deleted', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
 app.post('/api/salaries', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addSalaries(req.body);
@@ -363,11 +373,31 @@ app.post('/api/salaries', authMiddleware, adminMiddleware, function(req, res) {
     }
 });
 
+app.delete('/api/salaries/:id', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.deleteSalary(parseInt(req.params.id, 10));
+        broadcast('salary-deleted', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
 app.post('/api/evaluations', authMiddleware, adminMiddleware, function(req, res) {
     try {
         var result = db.addEvaluations(req.body);
         broadcast('evaluations-added', { count: result.count });
         res.json({ ok: true, data: result });
+    } catch(err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+app.delete('/api/evaluations/:id', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        db.deleteEvaluation(parseInt(req.params.id, 10));
+        broadcast('evaluation-deleted', { id: parseInt(req.params.id, 10) });
+        res.json({ ok: true });
     } catch(err) {
         res.json({ ok: false, error: err.message });
     }
@@ -397,6 +427,18 @@ app.post('/api/upload/avatar', authMiddleware, adminMiddleware, function(req, re
         res.json({ ok: true, path: filePath });
     } catch(err) {
         res.json({ ok: false, error: err.message });
+    }
+});
+
+// ===== 数据库备份（仅管理员） =====
+var backupScript = path.join(ROOT, 'scripts', 'backup-db.js');
+app.post('/api/backup', authMiddleware, adminMiddleware, function(req, res) {
+    try {
+        var { execFileSync } = require('child_process');
+        var result = execFileSync(process.execPath, [backupScript], { encoding: 'utf8', timeout: 60000 });
+        res.json({ ok: true, message: '备份完成', output: result.trim().split('\n').pop() });
+    } catch(err) {
+        res.json({ ok: false, error: '备份失败: ' + err.message });
     }
 });
 

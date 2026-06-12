@@ -1367,6 +1367,16 @@
                             <i class="fas fa-search artist-search-icon"></i>
                             <input type="text" id="artistSearchInput" class="artist-search-input"
                                 placeholder="搜索艺人姓名、门店、岗位..." oninput="filterArtists()">
+                            <select id="artistLevelFilter" class="artist-search-input" onchange="filterArtists()"
+                                style="max-width:100px;padding:10px 14px;border-radius:10px;border:1px solid var(--border-color);background:var(--surface-bg);color:var(--text-color);margin-left:8px;">
+                                <option value="">全部等级</option>
+                                <option value="S级">S级</option>
+                                <option value="A+级">A+级</option>
+                                <option value="A级">A级</option>
+                                <option value="B+级">B+级</option>
+                                <option value="B级">B级</option>
+                                <option value="C级">C级</option>
+                            </select>
                         </div>
                     </div>
 
@@ -1720,6 +1730,16 @@
                             <i class="fas fa-search artist-search-icon"></i>
                             <input type="text" id="reserveSearchInput" class="artist-search-input"
                                 placeholder="搜索姓名、岗位、地区..." oninput="filterReserveArtists()">
+                            <select id="reserveLevelFilter" class="artist-search-input" onchange="filterReserveArtists()"
+                                style="max-width:100px;padding:10px 14px;border-radius:10px;border:1px solid var(--border-color);background:var(--surface-bg);color:var(--text-color);margin-left:8px;">
+                                <option value="">全部等级</option>
+                                <option value="S级">S级</option>
+                                <option value="A+级">A+级</option>
+                                <option value="A级">A级</option>
+                                <option value="B+级">B+级</option>
+                                <option value="B级">B级</option>
+                                <option value="C级">C级</option>
+                            </select>
                         </div>
                     </div>
 
@@ -3133,6 +3153,18 @@
                 return this._fetch('/api/contracts/' + contractData.id, { method: 'PUT', body: JSON.stringify(contractData) });
             },
 
+            async deleteContract(id) {
+                return this._fetch('/api/contracts/' + id, { method: 'DELETE' });
+            },
+
+            async deleteEvaluation(id) {
+                return this._fetch('/api/evaluations/' + id, { method: 'DELETE' });
+            },
+
+            async deleteSalary(id) {
+                return this._fetch('/api/salaries/' + id, { method: 'DELETE' });
+            },
+
             async addSalaries(salaryList) {
                 return this._fetch('/api/salaries', { method: 'POST', body: JSON.stringify(salaryList) });
             },
@@ -3384,6 +3416,27 @@
                     } catch(e) { return { ok: false, error: e.message }; }
                 }
                 return { ok: false, error: 'IPC 不可用' };
+            },
+            async deleteContract(id) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.deleteContract(id); }
+                    catch(e) { console.warn('[DBStorage] Server deleteContract failed:', e.message); this._serverMode = false; }
+                }
+                return { ok: false, error: '仅服务器模式支持删除合同' };
+            },
+            async deleteEvaluation(id) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.deleteEvaluation(id); }
+                    catch(e) { console.warn('[DBStorage] Server deleteEvaluation failed:', e.message); this._serverMode = false; }
+                }
+                return { ok: false, error: '仅服务器模式支持删除评价' };
+            },
+            async deleteSalary(id) {
+                if (this._serverMode) {
+                    try { return await ServerStorage.deleteSalary(id); }
+                    catch(e) { console.warn('[DBStorage] Server deleteSalary failed:', e.message); this._serverMode = false; }
+                }
+                return { ok: false, error: '仅服务器模式支持删除薪资' };
             },
             async addContract(contractData) {
                 if (this._serverMode) {
@@ -4430,7 +4483,11 @@
                 if (searchInput) keyword = searchInput.value.trim().toLowerCase();
             }
 
+            // 等级筛选
+            var levelFilter = (document.getElementById('artistLevelFilter') || {}).value || '';
+
             var filtered = appData.artists.filter(function(artist) {
+                if (levelFilter && artist.level !== levelFilter) return false;
                 if (!keyword) return true;
                 return (artist.name || '').toLowerCase().indexOf(keyword) !== -1
                     || (artist.store || '').toLowerCase().indexOf(keyword) !== -1
@@ -4521,7 +4578,7 @@
                         + '<td>' + escapeHtml(contract.endDate || '') + '</td>'
                         + '<td>' + escapeHtml(contract.contractNumber || '') + '</td>'
                         + '<td><span class="badge badge-primary">' + escapeHtml(contract.status) + '</span></td>'
-                        + '<td><button class="btn btn-sm btn-info" onclick="editContract(' + contract.id + ')"><i class="fas fa-edit"></i> 编辑</button></td>';
+                        + '<td><button class="btn btn-sm btn-info me-1" onclick="editContract(' + contract.id + ')"><i class="fas fa-edit"></i></button><button class="btn btn-sm btn-danger admin-only" onclick="deleteContract(' + contract.id + ')"><i class="fas fa-trash"></i></button></td>';
                     contractsList.appendChild(row);
                 });
             }
@@ -4630,7 +4687,8 @@
                     + '<td>¥' + escapeHtml(s.dailySalary || 0) + '</td>'
                     + '<td>' + escapeHtml(s.performanceDays || 0) + '</td>'
                     + '<td>¥' + escapeHtml(s.monthlySalary || 0) + '</td>'
-                    + '<td><strong>¥' + total + '</strong></td>';
+                    + '<td><strong>¥' + total + '</strong></td>'
+                    + '<td><button class="btn btn-sm btn-danger admin-only" onclick="deleteSalary(' + s.id + ')"><i class="fas fa-trash"></i></button></td>';
                 salaryList.appendChild(row);
             });
         }
@@ -4990,7 +5048,8 @@
                     + '<td><span style="' + scoreColor + '">' + score.toFixed(1) + '</span></td>'
                     + '<td>' + tagsHtml + '</td>'
                     + '<td>' + escapeHtml(evaluation.evaluatedAt || '') + '</td>'
-                    + '<td style="min-width:120px;">' + sparklineHtml + '</td>';
+                    + '<td style="min-width:120px;">' + sparklineHtml + '</td>'
+                    + '<td><button class="btn btn-sm btn-danger admin-only" onclick="deleteEvaluation(' + evaluation.id + ')"><i class="fas fa-trash"></i></button></td>';
                 evaluationList.appendChild(row);
             });
 
@@ -8314,6 +8373,42 @@
             }
         }
 
+        async function deleteContract(id) {
+            if (!guardWrite('删除合同')) return;
+            if (!confirm('确定要删除这份合同吗？')) return;
+            const result = await DBStorage.deleteContract(id);
+            if (result.ok) {
+                await refreshData(); renderCurrentView();
+                showToast('合同删除成功', 'success');
+            } else {
+                showToast('删除失败：' + (result.error || '未知错误'), 'error');
+            }
+        }
+
+        async function deleteEvaluation(id) {
+            if (!guardWrite('删除评价')) return;
+            if (!confirm('确定要删除这条评价吗？')) return;
+            const result = await DBStorage.deleteEvaluation(id);
+            if (result.ok) {
+                await refreshData(); renderCurrentView();
+                showToast('评价删除成功', 'success');
+            } else {
+                showToast('删除失败：' + (result.error || '未知错误'), 'error');
+            }
+        }
+
+        async function deleteSalary(id) {
+            if (!guardWrite('删除薪资')) return;
+            if (!confirm('确定要删除这条薪资记录吗？')) return;
+            const result = await DBStorage.deleteSalary(id);
+            if (result.ok) {
+                await refreshData(); renderCurrentView();
+                showToast('薪资删除成功', 'success');
+            } else {
+                showToast('删除失败：' + (result.error || '未知错误'), 'error');
+            }
+        }
+
         // 显示Toast提示
         function showToast(message, type = 'success') {
             const toastContainer = document.getElementById('toastContainer');
@@ -8378,12 +8473,20 @@
         function renderReserveArtistsList() {
             var list = appData.reserveArtists || [];
             var searchTerm = (document.getElementById('reserveSearchInput') || {}).value || '';
+            var levelFilter = (document.getElementById('reserveLevelFilter') || {}).value || '';
+
+            // 等级筛选
+            if (levelFilter) {
+                list = list.filter(function(a) { return a.level === levelFilter; });
+            }
+            // 文本搜索
             if (searchTerm.trim()) {
                 var kw = searchTerm.trim().toLowerCase();
                 list = list.filter(function(a) {
                     return (a.name || '').toLowerCase().indexOf(kw) >= 0 ||
                            (a.position || '').toLowerCase().indexOf(kw) >= 0 ||
-                           (a.region || '').toLowerCase().indexOf(kw) >= 0;
+                           (a.region || '').toLowerCase().indexOf(kw) >= 0 ||
+                           (a.level || '').toLowerCase().indexOf(kw) >= 0;
                 });
             }
             var tbody = document.getElementById('reserveArtistsList');

@@ -237,6 +237,27 @@ function deleteArtist(id) {
   return {};
 }
 
+function deleteContract(id) {
+  // 删除合同关联的 PDF 文件
+  var row = db.prepare('SELECT contract_file FROM contracts WHERE id = ?').get(id);
+  if (row && row.contract_file) {
+    var fullPath = safeResolveSrc(row.contract_file);
+    if (fullPath && fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  }
+  db.prepare('DELETE FROM contracts WHERE id = ?').run(id);
+  return {};
+}
+
+function deleteEvaluation(id) {
+  db.prepare('DELETE FROM evaluations WHERE id = ?').run(id);
+  return {};
+}
+
+function deleteSalary(id) {
+  db.prepare('DELETE FROM salaries WHERE id = ?').run(id);
+  return {};
+}
+
 function addContract(data) {
   var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
   var contractFile = saveContractFileToDisk(data.contractFile);
@@ -817,8 +838,8 @@ module.exports = {
   getAllData, getPartialData,
   getArtistMedia, getReserveArtistMedia, getDataETag,
   addArtist, updateArtist, deleteArtist,
-  addContract, updateContract, getContractFileBase64,
-  addSalaries, addEvaluations,
+  addContract, updateContract, deleteContract, getContractFileBase64,
+  addSalaries, addEvaluations, deleteEvaluation, deleteSalary,
   saveArtistPhotos, saveAvatar,
   resetAllData,
   addAnnouncement, deleteAnnouncement, getAnnouncementFileBase64, getAnnouncementFilePath,
