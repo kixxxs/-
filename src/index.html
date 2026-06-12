@@ -2528,6 +2528,19 @@
         // ===== 云端同步配置 =====
         var CLOUD_SERVER_URL = 'http://106.53.6.92:8080';
 
+        // 将相对路径的头像 URL 转为绝对路径（Electron/移动端 file:// 模式下需要）
+        function resolveAvatarUrl(avatar) {
+            if (!avatar) return avatar;
+            // 如果已经是绝对 URL（http/https/data/base64），直接返回
+            if (avatar.indexOf('http') === 0 || avatar.indexOf('data:') === 0) return avatar;
+            // 相对路径 → 补全服务器地址
+            if (avatar.indexOf('/api/avatars/') === 0 || avatar.indexOf('assets/') === 0) {
+                var base = localStorage.getItem('v2_server_url') || CLOUD_SERVER_URL || '';
+                if (base) return base.replace(/\/+$/, '') + (avatar.indexOf('/') === 0 ? avatar : '/' + avatar);
+            }
+            return avatar;
+        }
+
         // 自动迁移旧服务器地址到新地址
         (function() {
             var OLD_URLS = ['http://42.194.230.53:8080'];
@@ -4506,7 +4519,7 @@
 
             filtered.forEach(function(artist) {
                 var row = document.createElement('tr');
-                row.innerHTML = '<td><img src="' + escapeHtml(artist.avatar || 'https://picsum.photos/id/' + (artist.id + 10) + '/40/40') + '" alt="' + escapeHtml(artist.name) + '" class="artist-avatar" loading="lazy" onclick="openArtistDetail(' + artist.id + ')" style="cursor:pointer;" title="点击查看艺人详情"></td>'
+                row.innerHTML = '<td><img src="' + escapeHtml(resolveAvatarUrl(artist.avatar) || 'https://picsum.photos/id/' + (artist.id + 10) + '/40/40') + '" alt="' + escapeHtml(artist.name) + '" class="artist-avatar" loading="lazy" onclick="openArtistDetail(' + artist.id + ')" style="cursor:pointer;" title="点击查看艺人详情"></td>'
                     + '<td><a href="javascript:void(0)" onclick="openArtistDetail(' + artist.id + ')" style="color:var(--primary-color);text-decoration:none;font-weight:500;">' + escapeHtml(artist.name) + '</a></td>'
                     + '<td>' + escapeHtml(artist.store) + '</td>'
                     + '<td>' + escapeHtml(artist.position) + '</td>'
@@ -7795,7 +7808,7 @@
 
             // Basic info
             document.getElementById('artistDetailTitle').textContent = artist.name + ' - 详情';
-            document.getElementById('detailAvatar').src = artist.avatar || 'https://picsum.photos/id/' + (artist.id + 10) + '/200/200';
+            document.getElementById('detailAvatar').src = resolveAvatarUrl(artist.avatar) || 'https://picsum.photos/id/' + (artist.id + 10) + '/200/200';
             document.getElementById('detailName').textContent = artist.name;
             document.getElementById('detailName2').textContent = artist.name;
             document.getElementById('detailLevel').textContent = artist.level || 'B级';
@@ -8498,7 +8511,7 @@
                 return;
             }
             tbody.innerHTML = list.map(function(a) {
-                var avatarUrl = a.avatar || '';
+                var avatarUrl = resolveAvatarUrl(a.avatar) || '';
                 var avatarHtml = avatarUrl
                     ? '<img src="' + escapeHtml(avatarUrl) + '" loading="lazy" style="width:36px;height:36px;border-radius:50%;object-fit:cover;cursor:pointer;" onclick="openReserveArtistDetail(' + a.id + ')" title="点击查看详情">'
                     : '<div style="width:36px;height:36px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;cursor:pointer;" onclick="openReserveArtistDetail(' + a.id + ')" title="点击查看详情"><i class="fas fa-user" style="color:var(--text-muted);"></i></div>';
@@ -8685,7 +8698,7 @@
             var setText = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val || ''; };
             document.getElementById('reserveArtistDetailTitle').textContent = artist.name + ' - 详情';
             var avatarEl = document.getElementById('reserveDetailAvatar');
-            if (avatarEl) avatarEl.src = artist.avatar || '';
+            if (avatarEl) avatarEl.src = resolveAvatarUrl(artist.avatar) || '';
             setText('reserveDetailName', artist.name);
             setText('reserveDetailName2', artist.name);
             setText('reserveDetailPosition', artist.position);
