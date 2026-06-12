@@ -8137,8 +8137,16 @@
                         showToast('上传失败：' + (result.error || '未知错误'), 'error');
                     }
                 } else {
-                    // Server/Capacitor: FormData 流式上传（无需 base64 编码）
-                    setProgress(5, '上传中...');
+                    // Server/Capacitor: read file as base64, then upload (smoother progress)
+                    setProgress(10, '读取中...');
+                    var dataUrl = await new Promise(function(resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function(e) { resolve(e.target.result); };
+                        reader.onerror = function(e) { reject(new Error('文件读取失败')); };
+                        reader.readAsDataURL(file);
+                    });
+
+                    setProgress(30, '上传中...');
 
                     var srvUrl = localStorage.getItem('v2_server_url') || '';
                     if (srvUrl) {
@@ -8146,10 +8154,11 @@
                         var uploadResult = await new Promise(function(resolve, reject) {
                             var xhr = new XMLHttpRequest();
                             xhr.open('POST', srvUrl.replace(/\/+$/, '') + '/api/artists/' + artistId + '/videos/upload');
+                            xhr.setRequestHeader('Content-Type', 'application/json');
                             if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
                             xhr.upload.onprogress = function(e) {
                                 if (e.lengthComputable) {
-                                    var pct = 5 + (e.loaded / e.total) * 90;
+                                    var pct = 30 + (e.loaded / e.total) * 70;
                                     setProgress(pct);
                                 }
                             };
@@ -8158,9 +8167,7 @@
                                 catch(e) { resolve({ ok: false, error: '服务器响应异常' }); }
                             };
                             xhr.onerror = function() { resolve({ ok: false, error: '网络连接失败' }); };
-                            var formData = new FormData();
-                            formData.append('video', file);
-                            xhr.send(formData);
+                            xhr.send(JSON.stringify({ dataUrl: dataUrl, fileName: file.name }));
                         });
                         var svrResult = uploadResult;
                         if (svrResult.ok) {
@@ -8809,28 +8816,23 @@
             if (progressBar) progressBar.style.display = 'block';
             if (uploadBtn) uploadBtn.disabled = true;
 
-            // FormData 流式上传
-            var srvUrl = localStorage.getItem('v2_server_url') || '';
+            // 读取为 base64 上传（进度条更平滑）
+            var reader = new FileReader();
+            reader.onprogress = function(e) {
+                if (e.lengthComputable && progressEl) {
+                    var pct = Math.round(e.loaded / e.total * 100);
+                    progressEl.textContent = pct + '%';
+                    if (progressBarInner) progressBarInner.style.width = pct + '%';
+                }
+            };
             var result = await new Promise(function(resolve) {
-                var xhr = new XMLHttpRequest();
-                xhr.open('POST', (srvUrl || '').replace(/\/+$/, '') + '/api/reserve-artists/' + _currentReserveArtist.id + '/videos/upload');
-                var token = sessionStorage.getItem('v2_login_token') || '';
-                if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
-                xhr.upload.onprogress = function(e) {
-                    if (e.lengthComputable) {
-                        var pct = Math.round(e.loaded / e.total * 100);
-                        if (progressEl) progressEl.textContent = pct + '%';
-                        if (progressBarInner) progressBarInner.style.width = pct + '%';
-                    }
+                reader.onload = async function(e) {
+                    var dataUrl = e.target.result;
+                    var r = await DBStorage.uploadReserveVideo(_currentReserveArtist.id, dataUrl, file.name);
+                    resolve(r);
                 };
-                xhr.onload = function() {
-                    try { resolve(JSON.parse(xhr.responseText)); }
-                    catch(e) { resolve({ ok: false, error: '服务器异常' }); }
-                };
-                xhr.onerror = function() { resolve({ ok: false, error: '网络连接失败' }); };
-                var fd = new FormData();
-                fd.append('video', file);
-                xhr.send(fd);
+                reader.onerror = function() { resolve({ ok: false, error: '文件读取失败' }); };
+                reader.readAsDataURL(file);
             });
 
             if (result.ok) {
