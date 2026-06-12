@@ -3,8 +3,10 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const multer = require('multer');
 const db = require('./server/database');
 
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
@@ -277,7 +279,8 @@ app.get('/api/data/all', authMiddleware, function(req, res) {
             res.status(304).set('ETag', etag);
             return res.end();
         }
-        var data = db.getAllData();
+        var tables = (req.query.tables || '').split(',').filter(Boolean);
+        var data = tables.length > 0 ? db.getPartialData(tables) : db.getAllData();
         res.set('ETag', etag).set('Cache-Control', 'private, max-age=0').json({ ok: true, data: data });
     } catch(err) {
         res.json({ ok: false, error: err.message });
@@ -409,15 +412,19 @@ app.post('/api/reset', authMiddleware, adminMiddleware, function(req, res) {
 
 // ===== 艺人视频管理 =====
 
-app.post('/api/artists/:id/videos/upload', authMiddleware, adminMiddleware, function(req, res) {
+app.post('/api/artists/:id/videos/upload', authMiddleware, adminMiddleware, upload.single('video'), function(req, res) {
     try {
         var artistId = parseInt(req.params.id, 10);
-        var dataUrl = req.body.dataUrl;
-        var fileName = req.body.fileName || 'video.mp4';
-        if (!dataUrl || !dataUrl.startsWith('data:video/')) {
-            return res.json({ ok: false, error: '无效的视频格式' });
+        var filePath;
+        if (req.file) {
+            // 新方式：FormData 流式上传
+            filePath = db.saveArtistVideo(artistId, { buffer: req.file.buffer, mimeType: req.file.mimetype, fileName: req.file.originalname });
+        } else if (req.body && req.body.dataUrl) {
+            // 兼容旧方式：JSON base64
+            filePath = db.saveArtistVideo(artistId, req.body.dataUrl, req.body.fileName || 'video.mp4');
+        } else {
+            return res.json({ ok: false, error: '请选择视频文件' });
         }
-        var filePath = db.saveArtistVideo(artistId, dataUrl, fileName);
         broadcast('videos-updated', { id: artistId });
         res.json({ ok: true, path: filePath });
     } catch(err) {
@@ -626,13 +633,17 @@ app.post('/api/reserve-artists/batch', authMiddleware, adminMiddleware, function
     }
 });
 
-app.post('/api/reserve-artists/:id/videos/upload', authMiddleware, adminMiddleware, function(req, res) {
+app.post('/api/reserve-artists/:id/videos/upload', authMiddleware, adminMiddleware, upload.single('video'), function(req, res) {
     try {
-        var dataUrl = req.body.dataUrl;
-        if (!dataUrl || !dataUrl.startsWith('data:video/')) return res.json({ ok: false, error: '无效的视频格式' });
-        var result = db.saveReserveVideo(parseInt(req.params.id, 10), dataUrl, req.body.fileName || '');
+        var result;
+        if (req.file) {
+            result = db.saveReserveVideo(parseInt(req.params.id, 10), { buffer: req.file.buffer, mimeType: req.file.mimetype, fileName: req.file.originalname });
+        } else if (req.body && req.body.dataUrl) {
+            result = db.saveReserveVideo(parseInt(req.params.id, 10), req.body.dataUrl, req.body.fileName || '');
+        } else {
+            return res.json({ ok: false, error: '请选择视频文件' });
+        }
         broadcast('reserve-artist-updated', { id: parseInt(req.params.id, 10) });
-        // 返回扁平格式，前端直接读 result.path
         res.json({ ok: true, path: result.path, videoId: result.id });
     } catch(err) {
         res.json({ ok: false, error: err.message });

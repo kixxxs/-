@@ -36,6 +36,7 @@
     "bootstrap-icons": "^1.8.1",
     "chart.js": "^4.4.0",
     "electron-updater": "^6.3.9",
+    "multer": "^2.1.1",
     "sql.js": "^1.10.0"
   },
   "optionalDependencies": {

@@ -144,6 +144,35 @@ function getAllData() {
   };
 }
 
+// 只返回指定表的数据（用于增量刷新）
+function getPartialData(tables) {
+  var result = {};
+  if (tables.indexOf('artists') !== -1) {
+    var a = db.prepare("SELECT id,name,avatar,status,business_level,store_name,positions,sign_status,daily_salary,linked_reserve_id,gender,id_card,age,phone FROM artists WHERE COALESCE(status,'') != '-1'").all();
+    result.artists = (a || []).map(mapArtist);
+  }
+  if (tables.indexOf('contracts') !== -1) {
+    result.contracts = (db.prepare('SELECT * FROM contracts').all() || []).map(mapContract);
+  }
+  if (tables.indexOf('evaluations') !== -1) {
+    result.evaluations = (db.prepare('SELECT * FROM evaluations ORDER BY evaluated_at DESC').all() || []).map(mapEvaluation);
+  }
+  if (tables.indexOf('salaries') !== -1) {
+    result.salaries = (db.prepare('SELECT * FROM salaries ORDER BY created_at DESC').all() || []).map(mapSalary);
+  }
+  if (tables.indexOf('announcements') !== -1) {
+    result.announcements = (db.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all() || []).map(mapAnnouncement);
+  }
+  if (tables.indexOf('reserveArtists') !== -1) {
+    var ra = db.prepare("SELECT id,name,avatar,gender,age,height,region,positions,business_level,daily_salary,phone,status,evaluator,evaluation_content,experience,linked_artist_id,created_at,updated_at FROM reserve_artists WHERE COALESCE(status,'') != '-1'").all();
+    result.reserveArtists = (ra || []).map(mapReserveArtist);
+  }
+  // stores always included for reference
+  var stores = db.prepare('SELECT * FROM stores').all();
+  result.stores = (stores || []).map(function(s) { return s.name; });
+  return result;
+}
+
 function getArtistMedia(artistId) {
   var row = db.prepare('SELECT photos, videos FROM artists WHERE id = ?').get(artistId);
   if (!row) return { photos: '[]', videos: '[]' };
@@ -574,11 +603,21 @@ function convertToH264(filePath) {
 }
 
 function saveArtistVideo(artistId, dataUrl, fileName) {
-  var matches = dataUrl.match(/^data:video\/(\w+);base64,(.+)$/);
-  if (!matches) throw new Error('无效的视频格式');
-  var ext = matches[1];
+  var buffer, ext;
+  // 支持新格式：{ buffer, mimeType, fileName }
+  if (typeof dataUrl === 'object' && dataUrl.buffer) {
+    buffer = dataUrl.buffer;
+    var mime = dataUrl.mimeType || 'video/mp4';
+    ext = mime.split('/')[1] || 'mp4';
+    fileName = dataUrl.fileName || fileName || 'video.mp4';
+  } else {
+    // 兼容旧格式：data:video/mp4;base64,...
+    var matches = String(dataUrl).match(/^data:video\/(\w+);base64,(.+)$/);
+    if (!matches) throw new Error('无效的视频格式');
+    ext = matches[1];
+    buffer = Buffer.from(matches[2], 'base64');
+  }
   if (ext === 'quicktime') ext = 'mov';
-  var buffer = Buffer.from(matches[2], 'base64');
   var videoDir = path.join(__dirname, 'src', 'assets', 'videos');
   if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
   var videoId = 'v_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
@@ -641,11 +680,19 @@ function getVideoStreamInfo(artistId, videoId) {
 }
 
 function saveReserveVideo(id, dataUrl, fileName) {
-  var matches = dataUrl.match(/^data:video\/(\w+);base64,(.+)$/);
-  if (!matches) throw new Error('无效的视频格式');
-  var ext = matches[1];
+  var buffer, ext;
+  if (typeof dataUrl === 'object' && dataUrl.buffer) {
+    buffer = dataUrl.buffer;
+    var mime = dataUrl.mimeType || 'video/mp4';
+    ext = mime.split('/')[1] || 'mp4';
+    fileName = dataUrl.fileName || fileName || 'video.mp4';
+  } else {
+    var matches = String(dataUrl).match(/^data:video\/(\w+);base64,(.+)$/);
+    if (!matches) throw new Error('无效的视频格式');
+    ext = matches[1];
+    buffer = Buffer.from(matches[2], 'base64');
+  }
   if (ext === 'quicktime') ext = 'mov';
-  var buffer = Buffer.from(matches[2], 'base64');
   var videoDir = path.join(__dirname, 'src', 'assets', 'videos');
   if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
   var videoId = 'rv_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
@@ -767,7 +814,7 @@ function batchAddReserveArtists(list) {
 
 module.exports = {
   init,
-  getAllData,
+  getAllData, getPartialData,
   getArtistMedia, getReserveArtistMedia, getDataETag,
   addArtist, updateArtist, deleteArtist,
   addContract, updateContract, getContractFileBase64,

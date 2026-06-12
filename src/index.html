@@ -1063,6 +1063,11 @@
                 font-size: 13px;
             }
         }
+    /* 数据列表虚拟滚动：浏览器自动跳过屏幕外行 */
+    #artistsList tr, #contractsList tr, #salaryList tr, #evaluationList tr, #reserveList tr {
+        content-visibility: auto;
+        contain-intrinsic-size: 0 52px;
+    }
     </style>
 </head>
 <body>
@@ -3088,6 +3093,11 @@
             },
 
             // 带 ETag 的加载：数据没变返回 { unchanged: true }，变了返回 { data }
+            async loadPartial(tables) {
+                var result = await this._fetch('/api/data/all?tables=' + encodeURIComponent(tables));
+                return result.ok ? result.data : null;
+            },
+
             async loadAllWithETag(etag) {
                 try {
                     var headers = this._headers();
@@ -4033,6 +4043,29 @@
             console.log('[SSE] Connected to ' + url);
         }
 
+        // SSE事件 → 增量更新表映射
+        var _sseTableMap = {
+            'artist': 'artists', 'contract': 'contracts', 'salaries': 'salaries',
+            'evaluations': 'evaluations', 'announcement': 'announcements', 'reserve': 'reserveArtists'
+        };
+
+        async function refreshPartial(tables) {
+            if (!DBStorage._serverMode) { await refreshData(); return; }
+            try {
+                var partial = await ServerStorage.loadPartial(tables.join(','));
+                if (partial) {
+                    if (partial.artists) appData.artists = partial.artists;
+                    if (partial.contracts) appData.contracts = partial.contracts;
+                    if (partial.evaluations) appData.evaluations = partial.evaluations;
+                    if (partial.salaries) { appData.salaries = partial.salaries; appData.salaries.forEach(function(s) { s.month = normalizeMonth(s.month); }); }
+                    if (partial.announcements) appData.announcements = partial.announcements;
+                    if (partial.reserveArtists) appData.reserveArtists = partial.reserveArtists;
+                    if (partial.stores) appData.stores = partial.stores;
+                    CacheStore.set('data_all', { data: JSON.parse(JSON.stringify(appData)), etag: '', time: Date.now() });
+                }
+            } catch(e) { console.warn('[SSE] 增量刷新失败，降级全量:', e.message); await refreshData(); }
+        }
+
         function handleRealtimeUpdate(type, data) {
             var hasOpenModal = document.querySelector('.modal[style*="display: block"], .modal[style*="display:block"]');
             if (hasOpenModal) {
@@ -4041,9 +4074,14 @@
                 return;
             }
             if (_sseDebounceTimer) clearTimeout(_sseDebounceTimer);
-            // 增量刷新：只更新数据 + 渲染当前活跃视图（不重渲全部13个视图）
+            var tableKey = null;
+            for (var prefix in _sseTableMap) {
+                if (type.indexOf(prefix) === 0) { tableKey = _sseTableMap[prefix]; break; }
+            }
             _sseDebounceTimer = setTimeout(async function() {
-                await refreshData();
+                if (type === 'data-reset') { await refreshData(); }
+                else if (tableKey) { await refreshPartial([tableKey]); }
+                else { await refreshData(); }
                 renderCurrentView();
             }, 150);
         }
@@ -8099,40 +8137,30 @@
                         showToast('上传失败：' + (result.error || '未知错误'), 'error');
                     }
                 } else {
-                    // Server/Capacitor: read file as base64, then upload
-                    setProgress(10, '读取中...');
-                    var dataUrl = await new Promise(function(resolve, reject) {
-                        var reader = new FileReader();
-                        reader.onload = function(e) { resolve(e.target.result); };
-                        reader.onerror = function(e) { reject(new Error('文件读取失败')); };
-                        reader.readAsDataURL(file);
-                    });
+                    // Server/Capacitor: FormData 流式上传（无需 base64 编码）
+                    setProgress(5, '上传中...');
 
-                    setProgress(30, '上传中...');
-
-                    // For server mode with XHR progress tracking
                     var srvUrl = localStorage.getItem('v2_server_url') || '';
                     if (srvUrl) {
                         var token = sessionStorage.getItem('v2_login_token') || '';
                         var uploadResult = await new Promise(function(resolve, reject) {
                             var xhr = new XMLHttpRequest();
                             xhr.open('POST', srvUrl.replace(/\/+$/, '') + '/api/artists/' + artistId + '/videos/upload');
-                            xhr.setRequestHeader('Content-Type', 'application/json');
                             if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
                             xhr.upload.onprogress = function(e) {
                                 if (e.lengthComputable) {
-                                    var pct = 30 + (e.loaded / e.total) * 70;
+                                    var pct = 5 + (e.loaded / e.total) * 90;
                                     setProgress(pct);
                                 }
                             };
                             xhr.onload = function() {
-                                try {
-                                    var body = JSON.parse(xhr.responseText);
-                                    resolve(body);
-                                } catch(e) { resolve({ ok: false, error: '服务器响应异常' }); }
+                                try { resolve(JSON.parse(xhr.responseText)); }
+                                catch(e) { resolve({ ok: false, error: '服务器响应异常' }); }
                             };
                             xhr.onerror = function() { resolve({ ok: false, error: '网络连接失败' }); };
-                            xhr.send(JSON.stringify({ dataUrl: dataUrl, fileName: file.name }));
+                            var formData = new FormData();
+                            formData.append('video', file);
+                            xhr.send(formData);
                         });
                         var svrResult = uploadResult;
                         if (svrResult.ok) {
@@ -8781,50 +8809,59 @@
             if (progressBar) progressBar.style.display = 'block';
             if (uploadBtn) uploadBtn.disabled = true;
 
-            var reader = new FileReader();
-            reader.onprogress = function(e) {
-                if (e.lengthComputable && progressEl) {
-                    var pct = Math.round(e.loaded / e.total * 100);
-                    progressEl.textContent = pct + '%';
-                    if (progressBarInner) progressBarInner.style.width = pct + '%';
-                }
-            };
-            reader.onload = async function(e) {
-                var dataUrl = e.target.result;
-                var result = await DBStorage.uploadReserveVideo(_currentReserveArtist.id, dataUrl, file.name);
-                if (result.ok) {
-                    // 兼容两种返回格式：扁平 {path:...} 和嵌套 {video:{path:...}}
-                    var path = result.path || (result.video && result.video.path) || '';
-                    // 优先用服务端返回的 videoId，保持前后端一致
-                    var videoId = result.videoId || (result.video && result.video.id) || ('rv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
-                    var videoMeta = {
-                        id: videoId,
-                        fileName: file.name,
-                        serverPath: path,
-                        size: file.size,
-                        mimeType: file.type || 'video/mp4',
-                        uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
-                    };
-                    _currentReserveVideos.push(videoMeta);
-                    var json = JSON.stringify(_currentReserveVideos);
-                    await DBStorage.saveReserveVideos(_currentReserveArtist.id, json);
-                    _currentReserveArtist.videos = json;
-                    for (var i = 0; i < appData.reserveArtists.length; i++) {
-                        if (appData.reserveArtists[i].id === _currentReserveArtist.id) {
-                            appData.reserveArtists[i].videos = json;
-                            break;
-                        }
+            // FormData 流式上传
+            var srvUrl = localStorage.getItem('v2_server_url') || '';
+            var result = await new Promise(function(resolve) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', (srvUrl || '').replace(/\/+$/, '') + '/api/reserve-artists/' + _currentReserveArtist.id + '/videos/upload');
+                var token = sessionStorage.getItem('v2_login_token') || '';
+                if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable) {
+                        var pct = Math.round(e.loaded / e.total * 100);
+                        if (progressEl) progressEl.textContent = pct + '%';
+                        if (progressBarInner) progressBarInner.style.width = pct + '%';
                     }
-                    renderReserveVideoGallery(_currentReserveVideos);
-                    showToast('视频上传成功', 'success');
-                } else {
-                    showToast('上传失败：' + (result.error || '未知错误'), 'error');
+                };
+                xhr.onload = function() {
+                    try { resolve(JSON.parse(xhr.responseText)); }
+                    catch(e) { resolve({ ok: false, error: '服务器异常' }); }
+                };
+                xhr.onerror = function() { resolve({ ok: false, error: '网络连接失败' }); };
+                var fd = new FormData();
+                fd.append('video', file);
+                xhr.send(fd);
+            });
+
+            if (result.ok) {
+                var path = result.path || (result.video && result.video.path) || '';
+                var videoId = result.videoId || (result.video && result.video.id) || ('rv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+                var videoMeta = {
+                    id: videoId,
+                    fileName: file.name,
+                    serverPath: path,
+                    size: file.size,
+                    mimeType: file.type || 'video/mp4',
+                    uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
+                };
+                _currentReserveVideos.push(videoMeta);
+                var json = JSON.stringify(_currentReserveVideos);
+                await DBStorage.saveReserveVideos(_currentReserveArtist.id, json);
+                _currentReserveArtist.videos = json;
+                for (var i = 0; i < appData.reserveArtists.length; i++) {
+                    if (appData.reserveArtists[i].id === _currentReserveArtist.id) {
+                        appData.reserveArtists[i].videos = json;
+                        break;
+                    }
                 }
-                if (progressEl) progressEl.style.display = 'none';
-                if (progressBar) progressBar.style.display = 'none';
-                if (uploadBtn) uploadBtn.disabled = false;
-            };
-            reader.readAsDataURL(file);
+                renderReserveVideoGallery(_currentReserveVideos);
+                showToast('视频上传成功', 'success');
+            } else {
+                showToast('上传失败：' + (result.error || '未知错误'), 'error');
+            }
+            if (progressEl) progressEl.style.display = 'none';
+            if (progressBar) progressBar.style.display = 'none';
+            if (uploadBtn) uploadBtn.disabled = false;
             event.target.value = '';
         }
 
