@@ -624,7 +624,7 @@
             flex-wrap: wrap;
             gap: 10px;
         }
-        .artist-search-wrapper { position: relative; flex: 0 1 280px; margin-left: auto; }
+        .artist-search-wrapper { position: relative; flex: 0 1 400px; margin-left: auto; display: flex; gap: 8px; }
         .artist-search-icon {
             position: absolute;
             left: 14px; top: 50%;
@@ -926,7 +926,7 @@
 
             .action-buttons { flex-direction: column; align-items: stretch; gap: 10px; }
             .action-buttons .btn { width: 100%; min-height: 46px; border-radius: 12px; font-weight: 600; }
-            .artist-search-wrapper { flex: 1 1 auto; width: 100%; margin-left: 0; }
+            .artist-search-wrapper { flex: 1 1 auto; width: 100%; margin-left: 0; display: flex; gap: 8px; }
             .artist-search-input, .salary-month-select { width: 100%; min-height: 46px; border-radius: 12px; font-size: 15px; }
 
             .modal-content {
@@ -1368,7 +1368,7 @@
                             <input type="text" id="artistSearchInput" class="artist-search-input"
                                 placeholder="搜索艺人姓名、门店、岗位..." oninput="filterArtists()">
                             <select id="artistLevelFilter" class="artist-search-input" onchange="filterArtists()"
-                                style="max-width:100px;padding:10px 14px;border-radius:10px;border:1px solid var(--border-color);background:var(--surface-bg);color:var(--text-color);margin-left:8px;">
+                                style="max-width:100px;flex-shrink:0;">
                                 <option value="">全部等级</option>
                                 <option value="S级">S级</option>
                                 <option value="A+级">A+级</option>
