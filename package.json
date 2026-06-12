@@ -1,6 +1,6 @@
 {
   "name": "artist-manager",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "艺人管理系统",
   "author": "Artist Manager Team",
   "main": "main.js",
