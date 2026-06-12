@@ -131,7 +131,7 @@ function getAllData() {
   var salaries = db.prepare('SELECT * FROM salaries ORDER BY created_at DESC').all();
 
   var announcements = db.prepare('SELECT * FROM announcements ORDER BY created_at DESC').all();
-  var reserveArtists = db.prepare("SELECT * FROM reserve_artists WHERE COALESCE(status,'') != '-1'").all();
+  var reserveArtists = db.prepare("SELECT id,name,avatar,gender,age,height,region,positions,business_level,daily_salary,phone,status,evaluator,evaluation_content,experience,linked_artist_id,created_at,updated_at FROM reserve_artists WHERE COALESCE(status,'') != '-1'").all();
 
   return {
     artists: (artists || []).map(mapArtist),
@@ -146,6 +146,12 @@ function getAllData() {
 
 function getArtistMedia(artistId) {
   var row = db.prepare('SELECT photos, videos FROM artists WHERE id = ?').get(artistId);
+  if (!row) return { photos: '[]', videos: '[]' };
+  return { photos: row.photos || '[]', videos: row.videos || '[]' };
+}
+
+function getReserveArtistMedia(id) {
+  var row = db.prepare('SELECT photos, videos FROM reserve_artists WHERE id = ?').get(id);
   if (!row) return { photos: '[]', videos: '[]' };
   return { photos: row.photos || '[]', videos: row.videos || '[]' };
 }
@@ -343,7 +349,7 @@ function mapReserveArtist(a) {
     level: a.business_level || 'C级', dailySalary: a.daily_salary || 0,
     phone: a.phone || '', status: a.status || '待定',
     evaluator: a.evaluator || '', evaluationContent: a.evaluation_content || '',
-    experience: a.experience || '', photos: a.photos || '[]', videos: a.videos || '[]',
+    experience: a.experience || '', photos: '[]', videos: '[]',
     createdAt: a.created_at ? a.created_at.slice(0, 19) : '',
     updatedAt: a.updated_at ? a.updated_at.slice(0, 19) : ''
   };
@@ -731,7 +737,7 @@ function batchAddReserveArtists(list) {
 module.exports = {
   init,
   getAllData,
-  getArtistMedia,
+  getArtistMedia, getReserveArtistMedia,
   addArtist, updateArtist, deleteArtist,
   addContract, updateContract, getContractFileBase64,
   addSalaries, addEvaluations,

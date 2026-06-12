@@ -194,6 +194,15 @@ app.get('/api/artists/:id/media', authMiddleware, function(req, res) {
   }
 });
 
+app.get('/api/reserve-artists/:id/media', authMiddleware, function(req, res) {
+  try {
+    var media = db.getReserveArtistMedia(parseInt(req.params.id, 10));
+    res.json({ ok: true, data: media });
+  } catch(err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 // ===== Login =====
 app.post('/api/login', function(req, res) {
     var ip = req.ip || req.socket.remoteAddress || 'unknown';

@@ -4165,6 +4165,40 @@
             }
         }
 
+        async function loadReserveArtistMedia(artistId) {
+            if (!artistId) return;
+            var artist = null;
+            for (var i = 0; i < (appData.reserveArtists || []).length; i++) {
+                if (appData.reserveArtists[i].id === artistId) { artist = appData.reserveArtists[i]; break; }
+            }
+            if (!artist) return;
+            if (artist.photos !== '[]' || artist.videos !== '[]') return;
+            try {
+                if (DBStorage._serverMode) {
+                    var resp = await fetch(ServerStorage._base + '/api/reserve-artists/' + artistId + '/media', {
+                        headers: { 'Authorization': 'Bearer ' + ServerStorage._token }
+                    });
+                    var body = await resp.json();
+                    if (body.ok) {
+                        artist.photos = body.data.photos || '[]';
+                        artist.videos = body.data.videos || '[]';
+                    }
+                } else if (_useCapacitorStore && CapDB.getReserveArtistMedia) {
+                    var media = CapDB.getReserveArtistMedia(artistId);
+                    artist.photos = media.photos || '[]';
+                    artist.videos = media.videos || '[]';
+                } else if (window.electronAPI && window.electronAPI.getReserveArtistMedia) {
+                    var result = await window.electronAPI.getReserveArtistMedia(artistId);
+                    if (result.ok) {
+                        artist.photos = result.data.photos || '[]';
+                        artist.videos = result.data.videos || '[]';
+                    }
+                }
+            } catch(e) {
+                console.error('[ReserveMedia] 加载失败:', e.message);
+            }
+        }
+
         // 动态填充门店下拉菜单
         function populateStoreDropdowns() {
             const selects = document.querySelectorAll('#artistStore');
@@ -4231,7 +4265,7 @@
 
             filtered.forEach(function(artist) {
                 var row = document.createElement('tr');
-                row.innerHTML = '<td><img src="' + escapeHtml(artist.avatar || 'https://picsum.photos/id/' + (artist.id + 10) + '/40/40') + '" alt="' + escapeHtml(artist.name) + '" class="artist-avatar" onclick="openArtistDetail(' + artist.id + ')" style="cursor:pointer;" title="点击查看艺人详情"></td>'
+                row.innerHTML = '<td><img src="' + escapeHtml(artist.avatar || 'https://picsum.photos/id/' + (artist.id + 10) + '/40/40') + '" alt="' + escapeHtml(artist.name) + '" class="artist-avatar" loading="lazy" onclick="openArtistDetail(' + artist.id + ')" style="cursor:pointer;" title="点击查看艺人详情"></td>'
                     + '<td><a href="javascript:void(0)" onclick="openArtistDetail(' + artist.id + ')" style="color:var(--primary-color);text-decoration:none;font-weight:500;">' + escapeHtml(artist.name) + '</a></td>'
                     + '<td>' + escapeHtml(artist.store) + '</td>'
                     + '<td>' + escapeHtml(artist.position) + '</td>'
@@ -5425,8 +5459,8 @@
                         targetPane.classList.add('show', 'active');
                     }
 
-                    // 延迟刷新数据
-                    setTimeout(async function() { await refreshData(); renderCurrentView(); }, 100);
+                    // 直接渲染（不重拉数据，Tab切换只换视图）
+                    setTimeout(function() { renderCurrentView(); }, 50);
                 });
             });
 
@@ -5465,8 +5499,8 @@
                     // 滚动到顶部提升移动端体验
                     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-                    // 延迟刷新数据
-                    setTimeout(async function() { await refreshData(); renderCurrentView(); }, 100);
+                    // 直接渲染（不重拉数据，Tab切换只换视图）
+                    setTimeout(function() { renderCurrentView(); }, 50);
                 });
             });
         }
@@ -7623,7 +7657,7 @@
                 var thumb = document.createElement('div');
                 thumb.style.cssText = 'width:120px;height:120px;overflow:hidden;border-radius:8px;cursor:pointer;position:relative;border:2px solid var(--border-color);';
                 var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.serverPath || '');
-                thumb.innerHTML = '<img src="' + escapeHtml(src) + '" style="width:100%;height:100%;object-fit:cover;">' +
+                thumb.innerHTML = '<img src="' + escapeHtml(src) + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;">' +
                     '<button style="position:absolute;top:4px;right:4px;background:rgba(255,0,0,0.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;line-height:1;" onclick="event.stopPropagation();deletePhoto(' + idx + ')">&times;</button>';
                 thumb.addEventListener('click', function() { openLightbox(idx); });
                 gallery.appendChild(thumb);
@@ -8182,7 +8216,7 @@
             tbody.innerHTML = list.map(function(a) {
                 var avatarUrl = a.avatar || '';
                 var avatarHtml = avatarUrl
-                    ? '<img src="' + escapeHtml(avatarUrl) + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover;cursor:pointer;" onclick="openReserveArtistDetail(' + a.id + ')" title="点击查看详情">'
+                    ? '<img src="' + escapeHtml(avatarUrl) + '" loading="lazy" style="width:36px;height:36px;border-radius:50%;object-fit:cover;cursor:pointer;" onclick="openReserveArtistDetail(' + a.id + ')" title="点击查看详情">'
                     : '<div style="width:36px;height:36px;border-radius:50%;background:var(--border-color);display:flex;align-items:center;justify-content:center;cursor:pointer;" onclick="openReserveArtistDetail(' + a.id + ')" title="点击查看详情"><i class="fas fa-user" style="color:var(--text-muted);"></i></div>';
                 return '<tr>' +
                     '<td>' + avatarHtml + '</td>' +
@@ -8351,13 +8385,16 @@
 
         // ===== 储备艺人详情弹窗 =====
 
-        function openReserveArtistDetail(id) {
+        async function openReserveArtistDetail(id) {
             var artist = null;
             for (var i = 0; i < appData.reserveArtists.length; i++) {
                 if (appData.reserveArtists[i].id === id) { artist = appData.reserveArtists[i]; break; }
             }
             if (!artist) return;
             _currentReserveArtist = artist;
+
+            // 懒加载照片和视频（不在列表API中预加载，节省带宽）
+            await loadReserveArtistMedia(id);
             try { _currentReservePhotos = JSON.parse(artist.photos || '[]'); } catch(_) { _currentReservePhotos = []; }
             try { _currentReserveVideos = JSON.parse(artist.videos || '[]'); } catch(_) { _currentReserveVideos = []; }
 
@@ -8431,7 +8468,7 @@
             container.innerHTML = photos.map(function(photo, idx) {
                 var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.serverPath || '');
                 return '<div style="position:relative;flex-shrink:0;">' +
-                    '<img src="' + escapeHtml(src) + '" style="width:120px;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="openReserveLightbox(' + idx + ')">' +
+                    '<img src="' + escapeHtml(src) + '" loading="lazy" style="width:120px;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="openReserveLightbox(' + idx + ')">' +
                     '<button class="btn btn-sm btn-danger admin-only" style="position:absolute;top:4px;right:4px;padding:2px 6px;font-size:10px;" onclick="event.stopPropagation();deleteReservePhoto(' + idx + ')"><i class="fas fa-times"></i></button>' +
                 '</div>';
             }).join('');
