@@ -203,6 +203,20 @@ app.get('/api/reserve-artists/:id/media', authMiddleware, function(req, res) {
   }
 });
 
+// ===== 头像文件服务（长期缓存） =====
+app.get('/api/avatars/:filename', function(req, res) {
+  var safeName = req.params.filename.replace(/[^a-zA-Z0-9_.-]/g, '');
+  var filePath = path.join(__dirname, 'server', 'src', 'assets', 'avatars', safeName);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  var ext = path.extname(safeName).toLowerCase();
+  var mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+  res.set({
+    'Content-Type': mimeMap[ext] || 'image/jpeg',
+    'Cache-Control': 'public, max-age=31536000, immutable'
+  });
+  fs.createReadStream(filePath).pipe(res);
+});
+
 // ===== Login =====
 app.post('/api/login', function(req, res) {
     var ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -256,8 +270,15 @@ function adminMiddleware(req, res, next) {
 
 app.get('/api/data/all', authMiddleware, function(req, res) {
     try {
+        // ETag based on DB stats — cheap to compute, changes on any mutation
+        var etag = db.getDataETag();
+        var clientETag = req.headers['if-none-match'] || '';
+        if (clientETag && clientETag === etag) {
+            res.status(304).set('ETag', etag);
+            return res.end();
+        }
         var data = db.getAllData();
-        res.json({ ok: true, data: data });
+        res.set('ETag', etag).set('Cache-Control', 'private, max-age=0').json({ ok: true, data: data });
     } catch(err) {
         res.json({ ok: false, error: err.message });
     }

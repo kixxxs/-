@@ -2511,6 +2511,69 @@
             }
         })();
 
+        // ===== IndexedDB 缓存层（微信模式：打开瞬间有数据） =====
+        var CacheStore = {
+            _db: null,
+            _ready: false,
+
+            init: function() {
+                var self = this;
+                return new Promise(function(resolve, reject) {
+                    if (self._ready) return resolve();
+                    try {
+                        var req = indexedDB.open('ArtistManagerCache', 1);
+                        req.onupgradeneeded = function(e) {
+                            var db = e.target.result;
+                            if (!db.objectStoreNames.contains('apiCache')) {
+                                db.createObjectStore('apiCache');
+                            }
+                        };
+                        req.onsuccess = function(e) {
+                            self._db = e.target.result;
+                            self._ready = true;
+                            resolve();
+                        };
+                        req.onerror = function(e) {
+                            console.warn('[Cache] IndexedDB 不可用，跳过缓存:', e.target.error);
+                            self._ready = false;
+                            resolve(); // 不阻塞，降级为无缓存模式
+                        };
+                    } catch(e) {
+                        console.warn('[Cache] IndexedDB 初始化失败:', e.message);
+                        self._ready = false;
+                        resolve();
+                    }
+                });
+            },
+
+            get: function(key) {
+                var self = this;
+                return new Promise(function(resolve) {
+                    if (!self._ready || !self._db) return resolve(null);
+                    try {
+                        var tx = self._db.transaction('apiCache', 'readonly');
+                        var req = tx.objectStore('apiCache').get(key);
+                        req.onsuccess = function() { resolve(req.result || null); };
+                        req.onerror = function() { resolve(null); };
+                    } catch(e) { resolve(null); }
+                });
+            },
+
+            set: function(key, value) {
+                var self = this;
+                if (!self._ready || !self._db) return;
+                try {
+                    var tx = self._db.transaction('apiCache', 'readwrite');
+                    tx.objectStore('apiCache').put(value, key);
+                } catch(e) { /* 静默失败 */ }
+            },
+
+            getETag: async function(key) {
+                var entry = await this.get(key);
+                return entry ? entry.etag : null;
+            }
+        };
+
         // ===== V2 登录系统 =====
         // 密码仅存储 SHA-256 哈希，不在源码中保留明文
         var LOGIN_ACCOUNTS = [
@@ -3022,6 +3085,22 @@
             async loadAll() {
                 var result = await this._fetch('/api/data/all');
                 return result.ok ? result.data : null;
+            },
+
+            // 带 ETag 的加载：数据没变返回 { unchanged: true }，变了返回 { data }
+            async loadAllWithETag(etag) {
+                try {
+                    var headers = this._headers();
+                    if (etag) headers['If-None-Match'] = etag;
+                    var res = await fetch(this._base + '/api/data/all', { headers: headers, signal: AbortSignal.timeout(30000) });
+                    if (res.status === 304) return { unchanged: true, etag: etag };
+                    var body = await res.json().catch(function() { return {}; });
+                    var newETag = res.headers.get('ETag') || '';
+                    return body.ok ? { data: body.data, etag: newETag } : null;
+                } catch(e) {
+                    console.warn('[ServerStorage] loadAllWithETag 失败:', e.message);
+                    return null;
+                }
             },
 
             async addArtist(artistData) {
@@ -4109,6 +4188,8 @@
                 if (data.stores && data.stores.length > 0) {
                     appData.stores = data.stores;
                 }
+                // 数据变更后更新 IndexedDB 缓存
+                CacheStore.set('data_all', { data: JSON.parse(JSON.stringify(appData)), etag: '', time: Date.now() });
             }
         }
 
@@ -4117,15 +4198,84 @@
         var _tabRendered = {};
 
         async function loadData() {
-            await refreshData();
-            populateStoreDropdowns();
-            populateSalaryMonthDropdowns();
-            // 仅渲染首页可见内容（仪表盘 + 公告栏），其他 tab 按需懒渲染
-            updateDashboard();
-            updateAnnouncementsList();
-            _tabRendered['#dashboard'] = true;
-            _tabRendered['#profile'] = true;
-            applyRoleBasedUI();
+            // 初始化 IndexedDB 缓存
+            await CacheStore.init();
+
+            // 第一步：尝试从本地缓存加载（瞬间显示）
+            var cached = await CacheStore.get('data_all');
+            if (cached && cached.data) {
+                console.log('[Cache] 命中缓存，即时渲染 (缓存时间: ' + new Date(cached.time).toLocaleTimeString() + ')');
+                applyCachedData(cached.data);
+                populateStoreDropdowns();
+                populateSalaryMonthDropdowns();
+                updateDashboard();
+                updateAnnouncementsList();
+                _tabRendered['#dashboard'] = true;
+                _tabRendered['#profile'] = true;
+                applyRoleBasedUI();
+            }
+
+            // 第二步：从服务器拉取最新数据
+            var serverResult = null;
+            if (DBStorage._serverMode) {
+                var etag = cached ? cached.etag : null;
+                serverResult = await ServerStorage.loadAllWithETag(etag);
+            }
+
+            if (serverResult && serverResult.data) {
+                // 服务器有新数据
+                refreshDataFromObject(serverResult.data);
+                CacheStore.set('data_all', { data: serverResult.data, etag: serverResult.etag || '', time: Date.now() });
+                if (!cached) {
+                    // 首次加载，渲染
+                    populateStoreDropdowns();
+                    populateSalaryMonthDropdowns();
+                    updateDashboard();
+                    updateAnnouncementsList();
+                    _tabRendered['#dashboard'] = true;
+                    _tabRendered['#profile'] = true;
+                    applyRoleBasedUI();
+                }
+            } else if (serverResult && serverResult.unchanged) {
+                console.log('[Cache] 服务器确认数据未变化 (304)');
+            } else if (!cached) {
+                // 没缓存也没服务器 → 走原来的 refreshData
+                await refreshData();
+                populateStoreDropdowns();
+                populateSalaryMonthDropdowns();
+                updateDashboard();
+                updateAnnouncementsList();
+                _tabRendered['#dashboard'] = true;
+                _tabRendered['#profile'] = true;
+                applyRoleBasedUI();
+                // 首次成功加载后缓存
+                if (appData.artists.length > 0) {
+                    CacheStore.set('data_all', { data: JSON.parse(JSON.stringify(appData)), etag: '', time: Date.now() });
+                }
+            }
+        }
+
+        // 将缓存数据注入 appData（不覆盖已有更好的数据）
+        function applyCachedData(data) {
+            if (!data) return;
+            if (data.artists && data.artists.length > appData.artists.length) appData.artists = data.artists;
+            if (data.contracts && data.contracts.length > appData.contracts.length) appData.contracts = data.contracts;
+            if (data.evaluations && data.evaluations.length > appData.evaluations.length) appData.evaluations = data.evaluations;
+            if (data.salaries && data.salaries.length > appData.salaries.length) appData.salaries = data.salaries;
+            if (data.reserveArtists && data.reserveArtists.length > appData.reserveArtists.length) appData.reserveArtists = data.reserveArtists;
+            if (data.announcements) appData.announcements = data.announcements;
+            if (data.stores) appData.stores = data.stores;
+        }
+
+        // 用服务器返回的数据直接填充 appData
+        function refreshDataFromObject(data) {
+            if (data.artists) appData.artists = data.artists;
+            if (data.contracts) appData.contracts = data.contracts;
+            if (data.evaluations) appData.evaluations = data.evaluations;
+            if (data.salaries) appData.salaries = data.salaries;
+            if (data.reserveArtists) appData.reserveArtists = data.reserveArtists;
+            if (data.announcements) appData.announcements = data.announcements;
+            if (data.stores) appData.stores = data.stores;
         }
 
         // 按需加载艺人媒体（照片+视频），避免初始数据包过大

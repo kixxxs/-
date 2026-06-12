@@ -156,6 +156,23 @@ function getReserveArtistMedia(id) {
   return { photos: row.photos || '[]', videos: row.videos || '[]' };
 }
 
+// 计算数据版本标识（用于 ETag/304），基于各表行数 + 最后更新时间
+function getDataETag() {
+  var tables = ['artists', 'contracts', 'evaluations', 'salaries', 'announcements', 'reserve_artists'];
+  var parts = [];
+  tables.forEach(function(t) {
+    var row = db.prepare("SELECT COUNT(*) as c FROM " + t).get();
+    parts.push(t + ':' + (row ? row.c : 0));
+  });
+  // 加上数据库文件本身的 mtime 和 size
+  try {
+    var stat = require('fs').statSync(DB_PATH);
+    parts.push('mtime:' + stat.mtimeMs);
+    parts.push('size:' + stat.size);
+  } catch(_) {}
+  return '"' + require('crypto').createHash('md5').update(parts.join('|')).digest('hex').substring(0, 12) + '"';
+}
+
 function addArtist(data) {
   var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
   var r = db.prepare(
@@ -341,7 +358,7 @@ function mapAnnouncement(a) {
 function mapReserveArtist(a) {
   return {
     id: a.id, name: a.name,
-    avatar: a.avatar || '', gender: a.gender || '',
+    avatar: avatarUrl(a.avatar, a.id + 1000), gender: a.gender || '',
     age: a.age || 0, height: a.height || '', region: a.region || '',
     position: (function() {
       try { return JSON.parse(a.positions || '[]').join(', '); } catch(_) { return a.positions || ''; }
@@ -429,10 +446,24 @@ function saveAvatar(dataUrl, artistName) {
 
 // ===== Mapping helpers (same output shape as main.js IPC) =====
 
+// 将数据库中的头像值转换为前端可用的 URL
+// 支持三种格式：文件路径 → URL、base64 → 保留、空 → 占位图
+function avatarUrl(avatar, id) {
+  if (!avatar) return 'https://picsum.photos/id/' + (id + 10) + '/40/40';
+  // 已经是 base64，保留兼容
+  if (avatar.indexOf('data:image/') === 0) return avatar;
+  // 是文件路径，转为 API URL
+  if (avatar.indexOf('assets/avatars/') === 0) {
+    return '/api/avatars/' + avatar.replace('assets/avatars/', '');
+  }
+  // 其他情况（如 http/https URL），保留原样
+  return avatar;
+}
+
 function mapArtist(a) {
   return {
     id: a.id, name: a.name,
-    avatar: a.avatar || 'https://picsum.photos/id/' + (a.id + 10) + '/40/40',
+    avatar: avatarUrl(a.avatar, a.id),
     photos: '[]',
     videos: '[]',
     status: a.status || '在岗', level: a.business_level || 'B级',
@@ -737,7 +768,7 @@ function batchAddReserveArtists(list) {
 module.exports = {
   init,
   getAllData,
-  getArtistMedia, getReserveArtistMedia,
+  getArtistMedia, getReserveArtistMedia, getDataETag,
   addArtist, updateArtist, deleteArtist,
   addContract, updateContract, getContractFileBase64,
   addSalaries, addEvaluations,
