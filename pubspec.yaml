@@ -18,11 +18,20 @@ dependencies:
   photo_view: ^0.15.0
   reorderables: ^0.6.0
   uuid: ^4.5.0
+  opencv_dart: ^1.4.3
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+
+# 🚀 核心修复：针对 opencv_dart 自定义原生模块编译
+# 仅保留文档、图片处理核心模块，禁用 video、videoio 和默认附带的 ffmpeg 编解码依赖
+opencv_dart:
+  android:
+    # 仅开启核心、图像读写、图像处理三大核心板块，彻底切断 libavcodec.so 依赖
+    modules: [core, imgcodecs, imgproc]
 
 flutter:
   uses-material-design: true

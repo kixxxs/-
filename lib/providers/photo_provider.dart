@@ -81,7 +81,23 @@ class PhotoProvider extends ChangeNotifier {
     final cropped = await _imageService.crop(rawBytes, cropRect);
     final newPath = '${photo.filePath}_cropped.jpg';
     await File(newPath).writeAsBytes(cropped);
-    _photos[photoIndex] = photo.copyWith(filePath: newPath, cropRect: cropRect, clearCrop: false);
+    _photos[photoIndex] = photo.copyWith(
+      filePath: newPath,
+      cropRect: cropRect,
+      clearCrop: false,
+      annotations: [], // 裁剪后标注会错位，清除
+    );
+    notifyListeners();
+  }
+
+  Future<void> enhancePhoto(int photoIndex) async {
+    if (photoIndex < 0 || photoIndex >= _photos.length) return;
+    final photo = _photos[photoIndex];
+    final rawBytes = await File(photo.filePath).readAsBytes();
+    final enhanced = await _imageService.enhance(rawBytes);
+    final newPath = '${photo.filePath}_enhanced.jpg';
+    await File(newPath).writeAsBytes(enhanced);
+    _photos[photoIndex] = photo.copyWith(filePath: newPath, isEnhanced: true);
     notifyListeners();
   }
 

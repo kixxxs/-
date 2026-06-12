@@ -1,10 +1,11 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/photo_item.dart';
 import '../providers/photo_provider.dart';
 
-/// 裁剪页 — 可拖拽的裁剪框
+/// 裁剪页 — 可拖拽的裁剪框，确认时正确映射到图片坐标
 class CropPage extends StatefulWidget {
   final int photoIndex;
 
@@ -19,9 +20,76 @@ class _CropPageState extends State<CropPage> {
   bool _isProcessing = false;
   String? _dragTarget;
   Offset? _moveStart;
+  int _imgW = 1, _imgH = 1;
+  Size _displaySize = Size.zero;
 
   double get width => _right - _left;
   double get height => _bottom - _top;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImgSize();
+  }
+
+  Future<void> _loadImgSize() async {
+    final p = context.read<PhotoProvider>();
+    final photo = p.photos[widget.photoIndex];
+    final file = File(photo.filePath);
+    if (!await file.exists()) return;
+    final bytes = await file.readAsBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final w = frame.image.width;
+    final h = frame.image.height;
+    frame.image.dispose();
+    codec.dispose();
+    if (mounted) {
+      setState(() {
+        _imgW = w;
+        _imgH = h;
+      });
+    }
+  }
+
+  /// 将屏幕归一化坐标转为图片归一化坐标（考虑 BoxFit.contain 留黑）
+  CropRect _toImageCrop() {
+    final screen = _displaySize;
+    if (_imgW <= 1 || _imgH <= 1 || screen.width <= 0 || screen.height <= 0) {
+      return const CropRect(left: 0, top: 0, width: 1, height: 1);
+    }
+    final imgAspect = _imgW / _imgH;
+    final screenAspect = screen.width / screen.height;
+    double dispL, dispT, dispW, dispH;
+
+    if (screenAspect > imgAspect) {
+      dispH = screen.height;
+      dispW = screen.height * imgAspect;
+      dispL = (screen.width - dispW) / 2;
+      dispT = 0.0;
+    } else {
+      dispW = screen.width;
+      dispH = screen.width / imgAspect;
+      dispL = 0.0;
+      dispT = (screen.height - dispH) / 2;
+    }
+
+    double s2iX(double sx) => ((sx * screen.width - dispL) / dispW).clamp(0.0, 1.0);
+    double s2iY(double sy) => ((sy * screen.height - dispT) / dispH).clamp(0.0, 1.0);
+
+    final iL = s2iX(_left);
+    final iT = s2iY(_top);
+    final iR = s2iX(_right);
+    final iB = s2iY(_bottom);
+    return CropRect(
+      left: iL,
+      top: iT,
+      width: (iR - iL).clamp(0.01, 1.0),
+      height: (iB - iT).clamp(0.01, 1.0),
+    );
+  }
+
+  bool get _isImageReady => _imgW > 1 && _imgH > 1;
 
   @override
   Widget build(BuildContext context) {
@@ -40,30 +108,33 @@ class _CropPageState extends State<CropPage> {
             child: const Text('重置', style: TextStyle(color: Colors.white70)),
           ),
           TextButton(
-            onPressed: _isProcessing ? null : () => _applyCrop(provider),
-            child: const Text('应用', style: TextStyle(color: Colors.green)),
+            onPressed: (_isProcessing || !_isImageReady) ? null : () => _applyCrop(provider),
+            child: Text(_isImageReady ? '应用' : '加载中…', style: TextStyle(color: _isImageReady ? Colors.green : Colors.grey)),
           ),
         ],
       ),
-      body: GestureDetector(
-        onPanStart: _onPanStartSimple,
-        onPanUpdate: _onPanUpdateSimple,
-        onPanEnd: _onPanEnd,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 照片
-            Image.file(File(photo.filePath), fit: BoxFit.contain),
-            // 裁剪遮罩 + 框
-            CustomPaint(
-              painter: _CropOverlayPainter(
-                left: _left, top: _top, right: _right, bottom: _bottom,
-              ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          _displaySize = Size(constraints.maxWidth, constraints.maxHeight);
+          return GestureDetector(
+            onPanStart: _onPanStartSimple,
+            onPanUpdate: _onPanUpdateSimple,
+            onPanEnd: _onPanEnd,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.file(File(photo.filePath), fit: BoxFit.contain),
+                CustomPaint(
+                  painter: _CropOverlayPainter(
+                    left: _left, top: _top, right: _right, bottom: _bottom,
+                  ),
+                ),
+                if (_isProcessing)
+                  const Center(child: CircularProgressIndicator(color: Colors.white)),
+              ],
             ),
-            if (_isProcessing)
-              const Center(child: CircularProgressIndicator(color: Colors.white)),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -77,10 +148,8 @@ class _CropPageState extends State<CropPage> {
   Future<void> _applyCrop(PhotoProvider provider) async {
     setState(() => _isProcessing = true);
     try {
-      await provider.cropPhoto(
-        widget.photoIndex,
-        CropRect(left: _left, top: _top, width: width, height: height),
-      );
+      final cropRect = _toImageCrop(); // 使用 LayoutBuilder 获取的实际显示尺寸
+      await provider.cropPhoto(widget.photoIndex, cropRect);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('裁剪完成'), backgroundColor: Colors.green),
@@ -98,14 +167,15 @@ class _CropPageState extends State<CropPage> {
     }
   }
 
-  // ─── 手势处理（简化版，使用容器坐标）───
+  // ─── 手势处理 ───
 
   void _onPanStartSimple(DragStartDetails details) {
-    final size = MediaQuery.of(context).size;
+    final size = _displaySize;
+    if (size.isEmpty) return;
     final px = (details.localPosition.dx / size.width).clamp(0.0, 1.0);
     final py = (details.localPosition.dy / size.height).clamp(0.0, 1.0);
 
-    const ht = 0.07; // 更大的容差
+    const ht = 0.07;
     _dragTarget = null;
 
     if ((px - _left).abs() < ht && (py - _top).abs() < ht) {
@@ -132,7 +202,8 @@ class _CropPageState extends State<CropPage> {
 
   void _onPanUpdateSimple(DragUpdateDetails details) {
     if (_dragTarget == null) return;
-    final size = MediaQuery.of(context).size;
+    final size = _displaySize;
+    if (size.isEmpty) return;
     final px = (details.localPosition.dx / size.width).clamp(0.0, 1.0);
     final py = (details.localPosition.dy / size.height).clamp(0.0, 1.0);
 
@@ -205,14 +276,12 @@ class _CropOverlayPainter extends CustomPainter {
     canvas.drawRect(Rect.fromLTWH(0, t, l, b - t), maskPaint);
     canvas.drawRect(Rect.fromLTWH(r, t, size.width - r, b - t), maskPaint);
 
-    // 裁剪框
     final borderPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5;
     canvas.drawRect(Rect.fromLTRB(l, t, r, b), borderPaint);
 
-    // 九宫格线
     final gridPaint = Paint()
       ..color = Colors.white24
       ..style = PaintingStyle.stroke
@@ -224,7 +293,6 @@ class _CropOverlayPainter extends CustomPainter {
       canvas.drawLine(Offset(l, y), Offset(r, y), gridPaint);
     }
 
-    // 四角大号控制柄
     const h = 28.0;
     final handleFill = Paint()..color = Colors.blue.withOpacity(0.3);
     canvas.drawCircle(Offset(l, t), h / 2, handleFill);

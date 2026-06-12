@@ -2,12 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_view/photo_view.dart';
 import '../providers/photo_provider.dart';
 import '../services/camera_service.dart';
 import '../widgets/thumbnail_list.dart';
 
-/// 拍照页 — 相机预览 + 已拍缩略图 + 快门与确认按钮
+/// 优化后的拍照页 — 彻底解决画面拉伸与返回卡顿问题
 class CameraPage extends StatefulWidget {
   const CameraPage({super.key});
 
@@ -45,8 +46,27 @@ class _CameraPageState extends State<CameraPage> with WidgetsBindingObserver {
 
   Future<void> _initCamera() async {
     try {
+      // 先确保权限已授予
+      var status = await Permission.camera.status;
+      if (status.isDenied || status.isLimited) {
+        status = await Permission.camera.request();
+      }
+      if (!status.isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('需要相机权限才能拍照')),
+          );
+        }
+        return;
+      }
+
+      // 权限授予后等待一帧，确保系统注册完成
+      await Future.delayed(const Duration(milliseconds: 300));
+
       await _cameraService.initialize();
-      setState(() => _isCameraReady = true);
+      if (mounted) {
+        setState(() => _isCameraReady = true);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -74,6 +94,28 @@ class _CameraPageState extends State<CameraPage> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _isTakingPicture = false);
     }
+  }
+
+  /// 🛠️ 终极优化：使用官方推荐的 AspectRatio，彻底解决拉伸变形和黑屏卡顿
+  Widget _buildCameraPreview() {
+    final controller = _cameraService.controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        color: Colors.black,
+        child: Center(
+          child: AspectRatio(
+            // 自动匹配手机摄像头的物理真实比例（通常是 3:4 或 9:16），保证绝不拉伸
+            aspectRatio: 1 / controller.value.aspectRatio,
+            child: CameraPreview(controller),
+          ),
+        ),
+      ),
+    );
   }
 
   void _viewPhoto(String filePath) {
@@ -106,10 +148,14 @@ class _CameraPageState extends State<CameraPage> with WidgetsBindingObserver {
       );
       return;
     }
-    // 先释放相机资源，避免与编辑/标注页冲突
+    // 先释放相机资源，避免与后面的编辑页冲突
     _cameraService.dispose();
     setState(() => _isCameraReady = false);
-    Navigator.pushNamed(context, '/edit');
+    
+    Navigator.pushNamed(context, '/edit').then((_) {
+      // 💡 优化：当从编辑页 pop 返回时，强制重新初始化相机并刷新 UI 状态
+      _initCamera();
+    });
   }
 
   @override
@@ -125,11 +171,7 @@ class _CameraPageState extends State<CameraPage> with WidgetsBindingObserver {
             // 相机预览区域
             Expanded(
               child: _isCameraReady && _cameraService.controller != null
-                  ? ClipRRect(
-                      borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(0)),
-                      child: CameraPreview(_cameraService.controller!),
-                    )
+                  ? _buildCameraPreview()
                   : const Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,

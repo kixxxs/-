@@ -23,13 +23,6 @@ class StorageService {
     return photoDir;
   }
 
-  /// 保存文件到指定目录，返回保存后的完整路径
-  Future<String> saveFile(File sourceFile, Directory targetDir, String fileName) async {
-    final targetPath = '${targetDir.path}/$fileName';
-    final savedFile = await sourceFile.copy(targetPath);
-    return savedFile.path;
-  }
-
   /// 删除临时照片文件
   Future<void> deleteTempPhotos(List<String> filePaths) async {
     for (final path in filePaths) {

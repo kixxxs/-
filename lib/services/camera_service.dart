@@ -25,30 +25,10 @@ class CameraService {
       orElse: () => _cameras!.first,
     );
 
-    // 逐级尝试分辨率（不设 imageFormatGroup，兼容性最好）
-    final presets = [
-      ResolutionPreset.max,
-      ResolutionPreset.ultraHigh,
-      ResolutionPreset.high,
-      ResolutionPreset.medium,
-      ResolutionPreset.low,
-    ];
-
-    Exception? lastError;
-    for (final preset in presets) {
-      try {
-        _controller = CameraController(camera, preset, enableAudio: false);
-        await _controller!.initialize();
-        _isInitialized = true;
-        return;
-      } catch (e) {
-        lastError = e as Exception;
-        await _controller?.dispose();
-        _controller = null;
-      }
-    }
-
-    throw Exception('相机初始化失败: $lastError');
+    // 直接用最高分辨率，画质最好
+    _controller = CameraController(camera, ResolutionPreset.max, enableAudio: false);
+    await _controller!.initialize();
+    _isInitialized = true;
   }
 
   /// 拍照 — 使用 saveTo（第2版已验证可行）

@@ -129,6 +129,11 @@ class EditPage extends StatelessWidget {
                             builder: (_) => CropPage(photoIndex: index),
                           ));
                         }),
+                        _buildActionChip(context, Icons.auto_fix_high, '增强',
+                          photo.isEnhanced ? null : () => _confirmEnhance(context, provider, index),
+                        ),
+                        if (photo.isEnhanced)
+                          _buildActionChip(context, Icons.check_circle, '已增强', null),
                       ],
                     ),
                     if (annotationCount > 0) ...[
@@ -151,7 +156,7 @@ class EditPage extends StatelessWidget {
     );
   }
 
-  Widget _buildActionChip(BuildContext context, IconData icon, String label, VoidCallback onTap) {
+  Widget _buildActionChip(BuildContext context, IconData icon, String label, VoidCallback? onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -192,6 +197,35 @@ class EditPage extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _confirmEnhance(BuildContext context, PhotoProvider provider, int index) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('画质增强'),
+        content: const Text('调整亮度对比度，文字更清晰。是否继续？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await provider.enhancePhoto(index);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('增强失败: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.blue),
+            child: const Text('增强'),
+          ),
+        ],
       ),
     );
   }
