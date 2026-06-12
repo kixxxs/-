@@ -59,7 +59,10 @@
     },
     "mac": {
       "category": "public.app-category.business",
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "build/icon.icns"
     },
     "nsis": {

@@ -2501,11 +2501,29 @@
         // ===== 云端同步配置 =====
         var CLOUD_SERVER_URL = 'http://106.53.6.92:8080';
 
+        // 自动迁移旧服务器地址到新地址
+        (function() {
+            var OLD_URLS = ['http://42.194.230.53:8080'];
+            var stored = localStorage.getItem('v2_server_url');
+            if (stored && OLD_URLS.indexOf(stored.replace(/\/+$/, '')) !== -1) {
+                localStorage.setItem('v2_server_url', CLOUD_SERVER_URL);
+                console.log('[Migrate] 服务器地址已自动更新: ' + stored + ' → ' + CLOUD_SERVER_URL);
+            }
+        })();
+
         // ===== V2 登录系统 =====
+        // 密码仅存储 SHA-256 哈希，不在源码中保留明文
         var LOGIN_ACCOUNTS = [
-            { account: 'admin', password: 'hezong123', label: '超级管理员', role: 'admin' },
-            { account: 'coach', password: 'hz123',     label: '音乐教练',   role: 'coach' }
+            { account: 'admin', passwordHash: 'c2dfc2cdab8e91b65c7a2990dfbc912aa1f1c8038e666d7c49c307b37d0b14b5', label: '超级管理员', role: 'admin' },
+            { account: 'coach', passwordHash: '52451e5b7c014ecbe34ed225668f6fbb53222e6bb8bb19954e6096ffbb8dfa9d', label: '音乐教练',   role: 'coach' }
         ];
+
+        // SHA-256 哈希辅助函数（用于前端本地登录验证）
+        async function sha256(str) {
+            var buf = new TextEncoder().encode(str);
+            var hash = await crypto.subtle.digest('SHA-256', buf);
+            return Array.from(new Uint8Array(hash)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+        }
 
         function isAdmin() {
             return sessionStorage.getItem('v2_login_role') === 'admin';
@@ -2585,12 +2603,12 @@
                 }
             }
 
-            // Local fallback
+            // Local fallback — compare SHA-256 hashes, never plaintext
             var found = null;
             for (var i = 0; i < LOGIN_ACCOUNTS.length; i++) {
                 if (LOGIN_ACCOUNTS[i].account === account) { found = LOGIN_ACCOUNTS[i]; break; }
             }
-            if (!found || found.password !== password) {
+            if (!found || found.passwordHash !== await sha256(password)) {
                 errorEl.textContent = '账户或密码错误，请重试';
                 passEl.value = '';
                 passEl.focus();
@@ -3432,23 +3450,9 @@
                 }
                 return { ok: false, error: 'IPC 不可用' };
             },
+            // dbQuery: 出于安全考虑，已禁用原始SQL通道。请使用具体的CRUD方法。
             async dbQuery(sql, params) {
-                if (this._serverMode) {
-                    try { return await ServerStorage.dbQuery(sql, params); }
-                    catch(e) { console.warn('[DBStorage] Server dbQuery failed, falling back:', e.message); this._serverMode = false; }
-                }
-                this._initMemoryIfNeeded();
-                if (_useCapacitorStore) {
-                    try { return { ok: true, data: CapDB.query(sql, params) }; }
-                    catch(e) { return { ok: false, error: e.message }; }
-                }
-                if (_useMemoryStore) return { ok: false, error: '浏览器环境不支持直接 SQL 查询' };
-                if (window.electronAPI && window.electronAPI.dbQuery) {
-                    try {
-                        return await window.electronAPI.dbQuery(sql, params);
-                    } catch(e) { return { ok: false, error: e.message }; }
-                }
-                return { ok: false, error: 'IPC 不可用' };
+                return { ok: false, error: '出于安全考虑，原始SQL查询已禁用。请使用具体的数据操作方法。' };
             },
             async resetAllData() {
                 if (this._serverMode) {
@@ -7732,7 +7736,10 @@
             // Capacitor 的 http://localhost 不算服务器
             if (srvUrl && srvUrl.indexOf('localhost') !== -1) srvUrl = '';
             if (srvUrl) {
-                return srvUrl.replace(/\/+$/, '') + '/api/videos/stream/' + (_currentDetailArtist ? _currentDetailArtist.id : 0) + '/' + encodeURIComponent(video.id);
+                var url = srvUrl.replace(/\/+$/, '') + '/api/videos/stream/' + (_currentDetailArtist ? _currentDetailArtist.id : 0) + '/' + encodeURIComponent(video.id);
+                var token = sessionStorage.getItem('v2_login_token') || '';
+                if (token) url += '?token=' + encodeURIComponent(token);
+                return url;
             }
             // Electron 本地模式：app-file:// 协议（支持 Range 请求）
             if (window.electronAPI && window.electronAPI.isDesktop && video.serverPath) {
@@ -8520,7 +8527,12 @@
             // 服务器流式播放：仅使用明确存储的 v2_server_url
             var base = localStorage.getItem('v2_server_url') || '';
             if (base && base.indexOf('localhost') !== -1) base = '';
-            if (base) return base.replace(/\/+$/, '') + '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + encodeURIComponent(video.id);
+            if (base) {
+                var rvUrl = base.replace(/\/+$/, '') + '/api/reserve-videos/stream/' + (_currentReserveArtist ? _currentReserveArtist.id : 0) + '/' + encodeURIComponent(video.id);
+                var rvToken = sessionStorage.getItem('v2_login_token') || '';
+                if (rvToken) rvUrl += '?token=' + encodeURIComponent(rvToken);
+                return rvUrl;
+            }
             // 离线降级：本地 base64
             if (video.localPath && video.localPath.startsWith('data:video/')) return video.localPath;
             return '#';
@@ -8600,9 +8612,12 @@
                 var dataUrl = e.target.result;
                 var result = await DBStorage.uploadReserveVideo(_currentReserveArtist.id, dataUrl, file.name);
                 if (result.ok) {
-                    var path = result.path || '';
+                    // 兼容两种返回格式：扁平 {path:...} 和嵌套 {video:{path:...}}
+                    var path = result.path || (result.video && result.video.path) || '';
+                    // 优先用服务端返回的 videoId，保持前后端一致
+                    var videoId = result.videoId || (result.video && result.video.id) || ('rv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
                     var videoMeta = {
-                        id: 'rv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+                        id: videoId,
                         fileName: file.name,
                         serverPath: path,
                         size: file.size,
@@ -8741,26 +8756,7 @@
             reader.readAsArrayBuffer(file);
         }
 
-        function parseCSVLine(line) {
-            var result = [];
-            var current = '';
-            var inQuotes = false;
-            for (var i = 0; i < line.length; i++) {
-                var ch = line[i];
-                if (inQuotes) {
-                    if (ch === '"') {
-                        if (i + 1 < line.length && line[i + 1] === '"') { current += '"'; i++; }
-                        else { inQuotes = false; }
-                    } else { current += ch; }
-                } else {
-                    if (ch === '"') { inQuotes = true; }
-                    else if (ch === ',') { result.push(current.trim()); current = ''; }
-                    else { current += ch; }
-                }
-            }
-            result.push(current.trim());
-            return result;
-        }
+        // parseCSVLine already defined above — reused here
 
         async function confirmReserveBatchImport() {
             if (!guardWrite('批量导入储备艺人')) return;

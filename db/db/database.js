@@ -86,9 +86,16 @@ function createTables() {
     created_at TEXT DEFAULT (datetime('now','localtime')),
     updated_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
-  try { db.run('ALTER TABLE artists ADD COLUMN photos TEXT DEFAULT \'[]\''); } catch(_) {}
-  try { db.run('ALTER TABLE artists ADD COLUMN videos TEXT DEFAULT \'[]\''); } catch(_) {}
-  try { db.run('ALTER TABLE artists ADD COLUMN age INTEGER DEFAULT 0'); } catch(_) {}
+  function safeAlter(sql) {
+    try { db.run(sql); } catch(e) {
+      if (e.message && e.message.indexOf('duplicate column') === -1) {
+        console.error('[DB Migration] Unexpected error:', e.message);
+      }
+    }
+  }
+  safeAlter('ALTER TABLE artists ADD COLUMN photos TEXT DEFAULT \'[]\'');
+  safeAlter('ALTER TABLE artists ADD COLUMN videos TEXT DEFAULT \'[]\'');
+  safeAlter('ALTER TABLE artists ADD COLUMN age INTEGER DEFAULT 0');
   db.run(`CREATE TABLE IF NOT EXISTS contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     artist_id INTEGER NOT NULL,
@@ -105,7 +112,7 @@ function createTables() {
     contract_file TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
-  try { db.run('ALTER TABLE contracts ADD COLUMN contract_file TEXT DEFAULT \'\''); } catch(_) {}
+  safeAlter('ALTER TABLE contracts ADD COLUMN contract_file TEXT DEFAULT \'\'');
   db.run(`CREATE TABLE IF NOT EXISTS evaluations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     artist_id INTEGER NOT NULL,
@@ -122,11 +129,11 @@ function createTables() {
     evaluated_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
   // Add sub-score columns to existing evaluations table (safe to ignore if already exist)
-  try { db.run('ALTER TABLE evaluations ADD COLUMN responsibility_score REAL DEFAULT 0'); } catch(_) {}
-  try { db.run('ALTER TABLE evaluations ADD COLUMN stability_score REAL DEFAULT 0'); } catch(_) {}
-  try { db.run('ALTER TABLE evaluations ADD COLUMN teamwork_score REAL DEFAULT 0'); } catch(_) {}
-  try { db.run('ALTER TABLE evaluations ADD COLUMN adaptability_score REAL DEFAULT 0'); } catch(_) {}
-  try { db.run('ALTER TABLE evaluations ADD COLUMN business_score REAL DEFAULT 0'); } catch(_) {}
+  safeAlter('ALTER TABLE evaluations ADD COLUMN responsibility_score REAL DEFAULT 0');
+  safeAlter('ALTER TABLE evaluations ADD COLUMN stability_score REAL DEFAULT 0');
+  safeAlter('ALTER TABLE evaluations ADD COLUMN teamwork_score REAL DEFAULT 0');
+  safeAlter('ALTER TABLE evaluations ADD COLUMN adaptability_score REAL DEFAULT 0');
+  safeAlter('ALTER TABLE evaluations ADD COLUMN business_score REAL DEFAULT 0');
   db.run(`CREATE TABLE IF NOT EXISTS salaries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     month TEXT DEFAULT '',
@@ -144,11 +151,11 @@ function createTables() {
     created_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
   // Migrate old salary table: add new columns if missing
-  try { db.run('ALTER TABLE salaries ADD COLUMN nature TEXT DEFAULT \'\''); } catch(_) {}
-  try { db.run('ALTER TABLE salaries ADD COLUMN monthly_salary REAL DEFAULT 0'); } catch(_) {}
-  try { db.run('ALTER TABLE salaries ADD COLUMN team_fee REAL DEFAULT 0'); } catch(_) {}
-  try { db.run('ALTER TABLE salaries ADD COLUMN travel_fee REAL DEFAULT 0'); } catch(_) {}
-  try { db.run('ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0'); } catch(_) {}
+  safeAlter('ALTER TABLE salaries ADD COLUMN nature TEXT DEFAULT \'\'');
+  safeAlter('ALTER TABLE salaries ADD COLUMN monthly_salary REAL DEFAULT 0');
+  safeAlter('ALTER TABLE salaries ADD COLUMN team_fee REAL DEFAULT 0');
+  safeAlter('ALTER TABLE salaries ADD COLUMN travel_fee REAL DEFAULT 0');
+  safeAlter('ALTER TABLE salaries ADD COLUMN rent_utility_fee REAL DEFAULT 0');
   db.run(`CREATE TABLE IF NOT EXISTS announcements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL DEFAULT '',
@@ -177,8 +184,8 @@ function createTables() {
     created_at TEXT DEFAULT (datetime('now','localtime')),
     updated_at TEXT DEFAULT (datetime('now','localtime'))
   )`);
-  try { db.run('ALTER TABLE reserve_artists ADD COLUMN linked_artist_id INTEGER DEFAULT NULL'); } catch(_) {}
-  try { db.run('ALTER TABLE artists ADD COLUMN linked_reserve_id INTEGER DEFAULT NULL'); } catch(_) {}
+  safeAlter('ALTER TABLE reserve_artists ADD COLUMN linked_artist_id INTEGER DEFAULT NULL');
+  safeAlter('ALTER TABLE artists ADD COLUMN linked_reserve_id INTEGER DEFAULT NULL');
 }
 
 function execSelect(sql, params) {

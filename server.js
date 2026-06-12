@@ -13,10 +13,14 @@ const ROOT = __dirname;
 app.use(cors());
 app.use(express.json({ limit: '200mb' }));
 
-// ===== Login accounts (same as frontend) =====
+// ===== Login accounts (passwords stored as SHA-256 hashes; override via env vars) =====
+// Set ADMIN_PASSWORD_HASH / COACH_PASSWORD_HASH env vars to override default hashes
+var ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || 'c2dfc2cdab8e91b65c7a2990dfbc912aa1f1c8038e666d7c49c307b37d0b14b5';
+var COACH_PASSWORD_HASH = process.env.COACH_PASSWORD_HASH || '52451e5b7c014ecbe34ed225668f6fbb53222e6bb8bb19954e6096ffbb8dfa9d';
+
 var LOGIN_ACCOUNTS = [
-    { account: 'admin', password: 'hezong123', label: '超级管理员', role: 'admin' },
-    { account: 'coach', password: 'hz123',     label: '音乐教练',   role: 'coach' }
+    { account: 'admin', passwordHash: ADMIN_PASSWORD_HASH, label: '超级管理员', role: 'admin' },
+    { account: 'coach', passwordHash: COACH_PASSWORD_HASH, label: '音乐教练',   role: 'coach' }
 ];
 
 // ===== Token store (in-memory, survives server restart = all clients re-login) =====
@@ -59,7 +63,7 @@ function generateToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-// ===== Auth middleware =====
+// ===== Auth middleware (standard: Authorization header only) =====
 function authMiddleware(req, res, next) {
     var authHeader = req.headers.authorization;
     var token = null;
@@ -69,7 +73,28 @@ function authMiddleware(req, res, next) {
     if (!token || !tokenStore[token]) {
         return res.status(401).json({ ok: false, error: '未登录或登录已过期' });
     }
-    // Check token expiry
+    if (tokenStore[token].createdAt && Date.now() - tokenStore[token].createdAt > 24 * 60 * 60 * 1000) {
+        delete tokenStore[token];
+        return res.status(401).json({ ok: false, error: '登录已过期，请重新登录' });
+    }
+    req.user = tokenStore[token];
+    next();
+}
+
+// ===== Video auth middleware — accepts token via header OR query parameter =====
+// Query param is needed because <video> tags cannot set custom HTTP headers
+function videoAuthMiddleware(req, res, next) {
+    var token = null;
+    var authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7);
+    }
+    if (!token) {
+        token = req.query.token || '';
+    }
+    if (!token || !tokenStore[token]) {
+        return res.status(401).json({ ok: false, error: '未登录或登录已过期' });
+    }
     if (tokenStore[token].createdAt && Date.now() - tokenStore[token].createdAt > 24 * 60 * 60 * 1000) {
         delete tokenStore[token];
         return res.status(401).json({ ok: false, error: '登录已过期，请重新登录' });
@@ -187,7 +212,8 @@ app.post('/api/login', function(req, res) {
     for (var i = 0; i < LOGIN_ACCOUNTS.length; i++) {
         if (LOGIN_ACCOUNTS[i].account === account) { found = LOGIN_ACCOUNTS[i]; break; }
     }
-    if (!found || found.password !== password) {
+    var inputHash = crypto.createHash('sha256').update(password).digest('hex');
+    if (!found || found.passwordHash !== inputHash) {
         return res.json({ ok: false, error: '账户或密码错误，请重试' });
     }
 
@@ -393,7 +419,7 @@ app.delete('/api/artists/:id/videos/:videoId', authMiddleware, adminMiddleware, 
     }
 });
 
-app.get('/api/videos/stream/:artistId/:videoId', function(req, res) {
+app.get('/api/videos/stream/:artistId/:videoId', videoAuthMiddleware, function(req, res) {
     try {
         var artistId = parseInt(req.params.artistId, 10);
         var videoId = req.params.videoId;
@@ -401,10 +427,12 @@ app.get('/api/videos/stream/:artistId/:videoId', function(req, res) {
         if (!video || !video.serverPath) {
             return res.status(404).json({ ok: false, error: '视频不存在' });
         }
-        var filePath = path.join(__dirname, 'server', 'src', video.serverPath);
-        if (!fs.existsSync(filePath)) {
+        var srcBase = path.join(__dirname, 'server', 'src');
+        var resolvedPath = path.resolve(srcBase, video.serverPath);
+        if (!resolvedPath.startsWith(srcBase + path.sep) || !fs.existsSync(resolvedPath)) {
             return res.status(404).json({ ok: false, error: '视频文件不存在' });
         }
+        var filePath = resolvedPath;
         var stat = fs.statSync(filePath);
         var fileSize = stat.size;
         var contentType = video.mimeType || 'video/mp4';
@@ -443,7 +471,7 @@ app.get('/api/videos/stream/:artistId/:videoId', function(req, res) {
     }
 });
 
-app.get('/api/reserve-videos/stream/:id/:videoId', function(req, res) {
+app.get('/api/reserve-videos/stream/:id/:videoId', videoAuthMiddleware, function(req, res) {
     try {
         var id = parseInt(req.params.id, 10);
         var videoId = req.params.videoId;
@@ -451,10 +479,12 @@ app.get('/api/reserve-videos/stream/:id/:videoId', function(req, res) {
         if (!video || !video.serverPath) {
             return res.status(404).json({ ok: false, error: '视频不存在' });
         }
-        var filePath = path.join(__dirname, 'server', 'src', video.serverPath);
-        if (!fs.existsSync(filePath)) {
+        var srcBase = path.join(__dirname, 'server', 'src');
+        var resolvedPath = path.resolve(srcBase, video.serverPath);
+        if (!resolvedPath.startsWith(srcBase + path.sep) || !fs.existsSync(resolvedPath)) {
             return res.status(404).json({ ok: false, error: '视频文件不存在' });
         }
+        var filePath = resolvedPath;
         var stat = fs.statSync(filePath);
         var fileSize = stat.size;
         var contentType = video.mimeType || 'video/mp4';
@@ -572,7 +602,8 @@ app.post('/api/reserve-artists/:id/videos/upload', authMiddleware, adminMiddlewa
         if (!dataUrl || !dataUrl.startsWith('data:video/')) return res.json({ ok: false, error: '无效的视频格式' });
         var result = db.saveReserveVideo(parseInt(req.params.id, 10), dataUrl, req.body.fileName || '');
         broadcast('reserve-artist-updated', { id: parseInt(req.params.id, 10) });
-        res.json({ ok: true, video: result });
+        // 返回扁平格式，前端直接读 result.path
+        res.json({ ok: true, path: result.path, videoId: result.id });
     } catch(err) {
         res.json({ ok: false, error: err.message });
     }
@@ -702,8 +733,16 @@ app.get('/api/events', function(req, res) {
 });
 
 // ===== Static file serving (after API routes) =====
-app.use('/node_modules', express.static(path.join(ROOT, 'node_modules')));
-app.use('/src', express.static(path.join(ROOT, 'src')));
+// Only serve specific node_modules packages needed by the frontend
+var ALLOWED_MODULES = ['chart.js', 'bootstrap', 'bootstrap-icons', '@fortawesome'];
+app.use('/node_modules', function(req, res, next) {
+  var moduleName = req.path.split('/').filter(Boolean)[0] || '';
+  if (ALLOWED_MODULES.indexOf(moduleName) === -1) {
+    return res.status(403).json({ ok: false, error: 'Forbidden' });
+  }
+  express.static(path.join(ROOT, 'node_modules'))(req, res, next);
+});
+// /src static serving removed for security — assets are served through authenticated API endpoints
 app.use('/build', express.static(path.join(ROOT, 'build')));
 
 // Fallback: serve index.html for root

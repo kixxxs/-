@@ -2,9 +2,21 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 var DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'artist_data.db');
+
+// Safe path resolution: ensures resolved path stays within __dirname/src
+function safeResolveSrc(subPath) {
+  if (!subPath || typeof subPath !== 'string') return null;
+  // Reject absolute paths
+  if (path.isAbsolute(subPath)) return null;
+  var srcRoot = path.join(__dirname, 'src');
+  var resolved = path.resolve(srcRoot, subPath);
+  // Ensure resolved path is within srcRoot
+  if (!resolved.startsWith(srcRoot + path.sep) && resolved !== srcRoot) return null;
+  return resolved;
+}
 
 var db;
 
@@ -213,8 +225,8 @@ function saveContractFileToDisk(contractFile) {
 
 function getContractFileBase64(filePath) {
   if (!filePath) return '';
-  var fullPath = path.join(__dirname, 'src', filePath);
-  if (!fs.existsSync(fullPath)) return '';
+  var fullPath = safeResolveSrc(filePath);
+  if (!fullPath || !fs.existsSync(fullPath)) return '';
   var buffer = fs.readFileSync(fullPath);
   return 'data:application/pdf;base64,' + buffer.toString('base64');
 }
@@ -278,8 +290,8 @@ function addAnnouncement(data) {
 function deleteAnnouncement(id) {
   var row = db.prepare('SELECT file_path FROM announcements WHERE id = ?').get(id);
   if (row && row.file_path) {
-    var fullPath = path.join(__dirname, 'src', row.file_path);
-    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    var fullPath = safeResolveSrc(row.file_path);
+    if (fullPath && fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
   }
   db.prepare('DELETE FROM announcements WHERE id = ?').run(id);
   return {};
@@ -288,7 +300,7 @@ function deleteAnnouncement(id) {
 function getAnnouncementFilePath(id) {
   var row = db.prepare('SELECT file_path FROM announcements WHERE id = ?').get(id);
   if (!row || !row.file_path) return '';
-  return path.join(__dirname, 'src', row.file_path);
+  return safeResolveSrc(row.file_path) || '';
 }
 
 function getAnnouncementFileBase64(id) {
@@ -304,7 +316,7 @@ function saveAnnouncementFileToDisk(fileData, fileName) {
   var buffer = Buffer.from(matches[1], 'base64');
   var pdfDir = path.join(__dirname, 'src', 'assets', 'announcements');
   if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
-  var safeName = fileName.replace(/[^a-zA-Z0-9_\-一-龥]/g, '_');
+  var safeName = fileName.replace(/[^a-zA-Z0-9_一-龥]/g, '_');
   var filePath = 'assets/announcements/' + Date.now() + '_' + safeName;
   fs.writeFileSync(path.join(__dirname, 'src', filePath), buffer);
   return filePath;
@@ -474,10 +486,13 @@ function convertToH264(filePath) {
 
   var codec = '';
   try {
-    codec = execSync(
-      'ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "' + filePath + '"',
-      { encoding: 'utf8', timeout: 10000 }
-    ).trim();
+    codec = execFileSync('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=codec_name',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath
+    ], { encoding: 'utf8', timeout: 10000 }).trim();
   } catch(_) {
     // ffprobe not available — try faststart remux anyway
   }
@@ -487,10 +502,13 @@ function convertToH264(filePath) {
   if (codec === 'hevc' || codec === 'hvc1' || codec === 'hev1') {
     // HEVC/H.265: re-encode to H.264 + faststart
     try {
-      execSync(
-        'ffmpeg -i "' + filePath + '" -c:v libx264 -c:a aac -movflags +faststart -y "' + tmpPath + '"',
-        { encoding: 'utf8', timeout: 300000, stdio: ['ignore', 'pipe', 'pipe'] }
-      );
+      execFileSync('ffmpeg', [
+        '-i', filePath,
+        '-c:v', 'libx264',
+        '-c:a', 'aac',
+        '-movflags', '+faststart',
+        '-y', tmpPath
+      ], { encoding: 'utf8', timeout: 300000, stdio: ['ignore', 'pipe', 'pipe'] });
       fs.unlinkSync(filePath);
       fs.renameSync(tmpPath, filePath);
     } catch(_) {
@@ -500,10 +518,12 @@ function convertToH264(filePath) {
     // All other formats: faststart remux only (no re-encode, ~1-2 seconds)
     // This moves the moov atom to the front so playback can start immediately
     try {
-      execSync(
-        'ffmpeg -i "' + filePath + '" -c copy -movflags +faststart -y "' + tmpPath + '"',
-        { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] }
-      );
+      execFileSync('ffmpeg', [
+        '-i', filePath,
+        '-c', 'copy',
+        '-movflags', '+faststart',
+        '-y', tmpPath
+      ], { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
       // Only replace original if remux was successful and output is not empty
       if (fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 0) {
         fs.unlinkSync(filePath);
@@ -723,5 +743,6 @@ module.exports = {
   saveReserveVideo, deleteReserveVideo,
   addReserveArtist, updateReserveArtist, deleteReserveArtist,
   saveReservePhotos, saveReserveVideos, saveReserveExperience,
-  batchAddReserveArtists
+  batchAddReserveArtists,
+  safeResolveSrc
 };

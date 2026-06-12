@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, protocol, net } = require('electron');
-const { autoUpdater } = require('electron-updater');
+// autoUpdater lazy-loaded in setupAutoUpdater() to avoid early init before app is ready
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -17,15 +17,33 @@ function getAssetsDir() {
   return path.join(__dirname, 'src', 'assets');
 }
 
-// Resolve asset path for reading: check userData first, then asar
+// Resolve asset path for reading: check userData first, then asar.
+// Normalizes and validates path stays within allowed directories to prevent traversal.
 function resolveAssetPath(subPath) {
+  // Reject empty, null, or absolute paths
+  if (!subPath || typeof subPath !== 'string') return null;
+  if (path.isAbsolute(subPath)) return null;
+
+  // Normalize to remove .. and . segments
+  var normalized = path.normalize(subPath);
+  // Reject if path tries to escape via .. after normalization
+  if (normalized.startsWith('..') || path.isAbsolute(normalized)) return null;
+
   if (app.isPackaged) {
-    var userPath = path.join(app.getPath('userData'), subPath);
+    var assetsRoot = getAssetsDir();
+    var userPath = path.join(assetsRoot, normalized);
+    // Double-check resolved path stays within assets directory
+    if (!userPath.startsWith(assetsRoot + path.sep) && userPath !== assetsRoot) return null;
     if (fs.existsSync(userPath)) return userPath;
-    var asarPath = path.join(__dirname, 'src', subPath);
+    var asarRoot = path.join(__dirname, 'src');
+    var asarPath = path.join(asarRoot, normalized);
+    if (!asarPath.startsWith(asarRoot + path.sep) && asarPath !== asarRoot) return null;
     return asarPath;
   }
-  return path.join(__dirname, 'src', subPath);
+  var devRoot = path.join(__dirname, 'src');
+  var devPath = path.join(devRoot, normalized);
+  if (!devPath.startsWith(devRoot + path.sep) && devPath !== devRoot) return null;
+  return devPath;
 }
 
 function createWindow() {
@@ -61,7 +79,7 @@ app.whenReady().then(async () => {
     try {
       var relativePath = request.url.replace('app-file://', '');
       var filePath = resolveAssetPath(relativePath);
-      if (!fs.existsSync(filePath)) {
+      if (!filePath || !fs.existsSync(filePath)) {
         return new Response('Not Found', { status: 404, headers: { 'content-type': 'text/plain' } });
       }
       var stat = fs.statSync(filePath);
@@ -109,6 +127,7 @@ app.whenReady().then(async () => {
 // ===== Auto Updater =====
 
 function setupAutoUpdater() {
+  const { autoUpdater } = require('electron-updater');
   autoUpdater.logger = {
     info: function(msg) { console.log('[Updater] ' + msg); },
     warn: function(msg) { console.warn('[Updater] ' + msg); },
@@ -158,13 +177,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-ipcMain.handle('db-query', (event, sql, params) => {
-  try {
-    return { ok: true, data: Database.query(sql, params) };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
-});
+// db-query handler removed for security — no raw SQL from renderer
 
 ipcMain.handle('db-export-all', () => {
   try {
@@ -197,7 +210,7 @@ ipcMain.handle('save-contract-file', async (event, dataUrl, contractId) => {
 ipcMain.handle('read-contract-file', async (event, filePath) => {
   try {
     const fullPath = resolveAssetPath(filePath);
-    if (!fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
+    if (!fullPath || !fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
     const buffer = fs.readFileSync(fullPath);
     const base64 = buffer.toString('base64');
     return { ok: true, data: 'data:application/pdf;base64,' + base64 };
@@ -214,7 +227,9 @@ ipcMain.handle('save-avatar', async (event, dataUrl, artistName) => {
     const buffer = Buffer.from(matches[2], 'base64');
     const avatarDir = path.join(getAssetsDir(), 'avatars');
     if (!fs.existsSync(avatarDir)) fs.mkdirSync(avatarDir, { recursive: true });
-    const fileName = `${artistName}_${Date.now()}.${ext}`;
+    // Sanitize artistName to prevent path traversal (same logic as server/database.js)
+    var safeName = String(artistName || 'unknown').replace(/[\/\\\.]{2,}/g, '_').replace(/[\/\\]/g, '_').slice(0, 100);
+    const fileName = `${safeName}_${Date.now()}.${ext}`;
     fs.writeFileSync(path.join(avatarDir, fileName), buffer);
     return { ok: true, path: `assets/avatars/${fileName}` };
   } catch (err) {
@@ -229,14 +244,7 @@ ipcMain.handle('select-export-dir', async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle('read-file', async (event, filePath) => {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return { ok: true, data: content };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
-});
+// read-file handler removed for security — no arbitrary file reads from renderer
 
 ipcMain.handle('select-and-read-csv', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -404,13 +412,13 @@ ipcMain.handle('delete-artist', (event, id) => {
 ipcMain.handle('update-artist', (event, data) => {
   try {
     var posJson = JSON.stringify((data.position || '').split(/[,，;]\s*/).map(function(p) { return p.trim(); }).filter(function(p) { return p; }));
-    // Preserve existing phone/gender/id_card/age when not provided (avoid wiping synced data)
+    // Preserve existing phone/gender/id_card/age when not explicitly provided
     var existing = Database.query("SELECT phone, gender, id_card, age FROM artists WHERE id = ?", [data.id]);
     var existingRow = (existing && existing.length > 0) ? existing[0] : null;
-    var phone = data.phone || (existingRow ? existingRow.phone || '' : '');
-    var gender = data.gender || (existingRow ? existingRow.gender || '' : '');
-    var idCard = data.idNumber || (existingRow ? existingRow.id_card || '' : '');
-    var age = data.age || (existingRow ? existingRow.age || 0 : 0);
+    var phone = data.phone !== undefined && data.phone !== null ? data.phone : (existingRow ? existingRow.phone || '' : '');
+    var gender = data.gender !== undefined && data.gender !== null ? data.gender : (existingRow ? existingRow.gender || '' : '');
+    var idCard = data.idNumber !== undefined && data.idNumber !== null ? data.idNumber : (existingRow ? existingRow.id_card || '' : '');
+    var age = data.age !== undefined && data.age !== null ? data.age : (existingRow ? existingRow.age || 0 : 0);
     Database.query(
       "UPDATE artists SET name=?, avatar=?, status=?, business_level=?, store_name=?, positions=?, sign_status=?, daily_salary=?, phone=?, gender=?, id_card=?, age=?, updated_at=datetime('now','localtime') WHERE id=?",
       [data.name, data.avatar || '', data.status || '在岗', data.level || 'B级', data.store || '',
@@ -514,6 +522,7 @@ ipcMain.handle('update-contract', (event, data) => {
 
 ipcMain.handle('add-salaries', (event, salaryList) => {
   try {
+    Database.query('BEGIN');
     var count = 0;
     (salaryList || []).forEach(function(sd) {
       var total = (sd.monthlySalary || 0) + (sd.teamFee || 0) + (sd.travelFee || 0) + (sd.rentUtilityFee || 0);
@@ -524,14 +533,17 @@ ipcMain.handle('add-salaries', (event, salaryList) => {
       );
       count++;
     });
+    Database.query('COMMIT');
     return { ok: true, data: { count: count } };
   } catch (err) {
+    try { Database.query('ROLLBACK'); } catch(_) {}
     return { ok: false, error: err.message };
   }
 });
 
 ipcMain.handle('add-evaluations', (event, evalList) => {
   try {
+    Database.query('BEGIN');
     var count = 0;
     (evalList || []).forEach(function(ed) {
       Database.query(
@@ -543,8 +555,10 @@ ipcMain.handle('add-evaluations', (event, evalList) => {
       );
       count++;
     });
+    Database.query('COMMIT');
     return { ok: true, data: { count: count } };
   } catch (err) {
+    try { Database.query('ROLLBACK'); } catch(_) {}
     return { ok: false, error: err.message };
   }
 });
@@ -602,7 +616,7 @@ ipcMain.handle('copy-video-file', async (event, artistId, filePath, fileName) =>
 ipcMain.handle('read-video-file', async (event, filePath) => {
   try {
     var fullPath = resolveAssetPath(filePath);
-    if (!fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
+    if (!fullPath || !fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
     var buffer = fs.readFileSync(fullPath);
     var ext = path.extname(fullPath).replace('.', '');
     if (ext === 'mov') ext = 'quicktime';
@@ -626,7 +640,7 @@ ipcMain.handle('delete-artist-video', async (event, artistId, videoId) => {
     // Delete physical file
     if (target && target.serverPath) {
       var fullPath = resolveAssetPath(target.serverPath);
-      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      if (fullPath && fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
     }
     Database.query(
       "UPDATE artists SET videos=?, updated_at=datetime('now','localtime') WHERE id=?",
@@ -712,7 +726,7 @@ ipcMain.handle('delete-announcement', async (event, id) => {
     var rows = Database.query('SELECT file_path FROM announcements WHERE id = ?', [id]);
     if (rows && rows.length > 0 && rows[0].file_path) {
       var fullPath = resolveAssetPath(rows[0].file_path);
-      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      if (fullPath && fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
     }
     Database.query('DELETE FROM announcements WHERE id = ?', [id]);
     return { ok: true };
@@ -724,7 +738,7 @@ ipcMain.handle('delete-announcement', async (event, id) => {
 ipcMain.handle('read-announcement-file', async (event, filePath) => {
   try {
     var fullPath = resolveAssetPath(filePath);
-    if (!fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
+    if (!fullPath || !fs.existsSync(fullPath)) return { ok: false, error: '文件不存在' };
     var buffer = fs.readFileSync(fullPath);
     var base64 = buffer.toString('base64');
     return { ok: true, data: 'data:application/pdf;base64,' + base64 };
@@ -736,15 +750,24 @@ ipcMain.handle('read-announcement-file', async (event, filePath) => {
 // ===== Update IPC handlers =====
 
 ipcMain.handle('check-for-update', function() {
-  return autoUpdater.checkForUpdates();
+  try {
+    const { autoUpdater } = require('electron-updater');
+    return autoUpdater.checkForUpdates();
+  } catch(err) { return { ok: false, error: err.message }; }
 });
 
 ipcMain.handle('download-update', function() {
-  return autoUpdater.downloadUpdate();
+  try {
+    const { autoUpdater } = require('electron-updater');
+    return autoUpdater.downloadUpdate();
+  } catch(err) { return { ok: false, error: err.message }; }
 });
 
 ipcMain.handle('quit-and-install', function() {
-  autoUpdater.quitAndInstall();
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.quitAndInstall();
+  } catch(err) {}
 });
 
 // ===== Artist media lazy-load =====
