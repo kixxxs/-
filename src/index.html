@@ -1368,7 +1368,7 @@
                             <input type="text" id="artistSearchInput" class="artist-search-input"
                                 placeholder="搜索艺人姓名、门店、岗位..." oninput="filterArtists()">
                             <select id="artistLevelFilter" class="artist-search-input" onchange="filterArtists()"
-                                style="max-width:100px;flex-shrink:0;">
+                                style="max-width:100px;flex-shrink:0;text-align:center;text-align-last:center;padding:10px 8px;">
                                 <option value="">全部等级</option>
                                 <option value="S级">S级</option>
                                 <option value="A+级">A+级</option>
@@ -1605,10 +1605,11 @@
                                         <th>演出天数</th>
                                         <th>合计月工资</th>
                                         <th>合计金额</th>
+                                        <th class="admin-only">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="salaryList">
-                                    <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted);">暂无工资数据，请上传CSV文件</td></tr>
+                                    <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">暂无工资数据，请上传CSV文件</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1674,6 +1675,7 @@
                                         <th>关键标签</th>
                                         <th>最新评价时间</th>
                                         <th>历史评价趋势</th>
+                                        <th class="admin-only">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="evaluationList">
@@ -4672,7 +4674,7 @@
             });
 
             if (filtered.length === 0) {
-                salaryList.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted);">未找到匹配的薪资记录</td></tr>';
+                salaryList.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">未找到匹配的薪资记录</td></tr>';
                 return;
             }
 
@@ -4995,7 +4997,7 @@
 
             var evals = (appData.evaluations || []).slice();
             if (evals.length === 0) {
-                evaluationList.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted);">暂无评价数据，请上传CSV文件</td></tr>';
+                evaluationList.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">暂无评价数据，请上传CSV文件</td></tr>';
                 updateEvaluationStats();
                 return;
             }
@@ -5024,7 +5026,7 @@
             });
 
             if (latestEvals.length === 0 && keyword) {
-                evaluationList.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted);">未找到匹配的评价</td></tr>';
+                evaluationList.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">未找到匹配的评价</td></tr>';
                 updateEvaluationStats();
                 return;
             }
@@ -8512,8 +8514,8 @@
                     '<td>' + (a.dailySalary ? '¥' + a.dailySalary + '/天' : '') + '</td>' +
                     '<td><span class="badge bg-' + (a.status === '已安排' ? 'success' : 'info') + '">' + escapeHtml(a.status) + '</span></td>' +
                     '<td><div class="admin-only">' +
-                        '<button class="btn btn-sm btn-outline-primary me-1" onclick="editReserveArtist(' + a.id + ')" title="编辑"><i class="fas fa-edit"></i></button>' +
-                        '<button class="btn btn-sm btn-outline-danger" onclick="deleteReserveArtist(' + a.id + ')" title="删除"><i class="fas fa-trash"></i></button>' +
+                        '<button class="btn btn-sm btn-info me-1" onclick="editReserveArtist(' + a.id + ')"><i class="fas fa-edit"></i></button>' +
+                        '<button class="btn btn-sm btn-danger" onclick="deleteReserveArtist(' + a.id + ')"><i class="fas fa-trash"></i></button>' +
                     '</div></td>' +
                 '</tr>';
             }).join('');
