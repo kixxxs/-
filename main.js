@@ -765,17 +765,28 @@ ipcMain.handle('download-update', function() {
 
 ipcMain.handle('quit-and-install', function() {
   try {
-    // 强制关闭窗口，清理资源，避免安装器检测到进程残留
+    // 1. 移除所有窗口关闭监听器，防止拦截退出
+    app.removeAllListeners('window-all-closed');
+    app.removeAllListeners('before-quit');
+    app.removeAllListeners('will-quit');
+
+    // 2. 销毁窗口（destroy 是同步的，不等待 close 事件）
     if (mainWindow) {
       mainWindow.removeAllListeners('close');
-      mainWindow.close();
+      mainWindow.destroy();
       mainWindow = null;
     }
-    app.removeAllListeners('window-all-closed');
-    const { autoUpdater } = require('electron-updater');
-    autoUpdater.quitAndInstall();
+
+    // 3. 延迟一帧确保窗口销毁完成，然后启动安装
+    setImmediate(function() {
+      try {
+        const { autoUpdater } = require('electron-updater');
+        autoUpdater.quitAndInstall();
+      } catch(e) {
+        app.exit(0);
+      }
+    });
   } catch(err) {
-    // 如果上述清理失败，强制退出
     app.exit(0);
   }
 });
